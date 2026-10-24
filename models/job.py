@@ -15,11 +15,15 @@ class JobCreate(BaseModel):
     budget: Optional[float] = Field(None, gt=0, description="Optional customer budget in INR (> 0)")
     mode: Optional[str] = Field("on-demand", description="on-demand or scheduled")
     scheduledAt: Optional[str] = Field(None, description="ISO timestamp for scheduled jobs")
+    customerName: Optional[str] = None
+    customerPhone: Optional[str] = None
 
 
 class JobResponse(BaseModel):
     id: str
     customerId: str
+    customerName: Optional[str] = None
+    customerPhone: Optional[str] = None
     category: str
     description: str
     location: JobLocation

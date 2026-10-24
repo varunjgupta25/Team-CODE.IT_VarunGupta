@@ -21,6 +21,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { storage } from '../../lib/storage';
+import { api } from '../../api';
 
 const STATUS_STEPS = [
   { key: JOB_STATUS.OPEN, label: 'Matching' },
@@ -75,12 +76,31 @@ export function JobStatusPage() {
 
   const job = currentJob || { id: activeJobId, status: JOB_STATUS.OPEN, category: 'Service' };
 
-  // Worker details — resolve from live mock store by uid
-  const allWorkers = storage.get('rb_mock_workers_v1', []);
+  const [workerDetails, setWorkerDetails] = useState(null);
   const assignedWorkerId =
     job.acceptedWorkerId ||
     (offers.length > 0 ? offers[offers.length - 1]?.workerId : null);
-  const assignedWorker = allWorkers.find((w) => w.uid === assignedWorkerId) || null;
+
+  useEffect(() => {
+    if (assignedWorkerId) {
+      api.getWorker(assignedWorkerId)
+        .then((res) => {
+          if (res) setWorkerDetails(res);
+        })
+        .catch(() => {});
+    }
+  }, [assignedWorkerId]);
+
+  const allWorkers = storage.get('rb_mock_workers_v1', []) || [];
+  const matchedWorkerObj = workerDetails || allWorkers.find((w) => w.uid === assignedWorkerId);
+  const assignedWorker = matchedWorkerObj || (assignedWorkerId ? {
+    uid: assignedWorkerId,
+    name: 'Assigned Worker',
+    phone: '',
+    rating: 5.0,
+    jobsDone: 0,
+    avatarUrl: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80'
+  } : null);
 
   const currentStepIdx = STATUS_STEPS.findIndex((s) => s.key === job.status);
   const latestOffer = offers.length > 0 ? offers[offers.length - 1] : null;

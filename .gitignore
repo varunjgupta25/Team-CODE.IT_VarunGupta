@@ -42,6 +42,8 @@ coverage.xml
 .idea/
 *.iml
 
-# OS
+# OS & Executables
 .DS_Store
 Thumbs.db
+*.exe
+cloudflared*

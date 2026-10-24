@@ -1,5 +1,7 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Query, status
+from core.database import db
 from core.auth import get_current_user, require_role
 from models.job import JobCreate, JobResponse, NearbyJobResponse
 from services.job_service import (
@@ -14,6 +16,34 @@ from services.job_service import (
 router = APIRouter(tags=["Jobs"])
 
 
+class CustomerRegisterRequest(BaseModel):
+    uid: Optional[str] = None
+    name: str
+    phone: str
+    location: Optional[Dict[str, Any]] = None
+
+
+@router.post("/customers/register", status_code=status.HTTP_201_CREATED)
+def api_register_customer(payload: CustomerRegisterRequest):
+    """
+    Register or update customer profile dynamically.
+    """
+    import uuid
+    customer_uid = payload.uid or f"cust_{uuid.uuid4().hex[:8]}"
+    default_loc = {"lat": 19.2812, "lng": 72.8697, "address": "Mira Road, Mumbai"}
+    cust_loc = payload.location or default_loc
+
+    user_data = {
+        "uid": customer_uid,
+        "role": "customer",
+        "name": payload.name.strip(),
+        "phone": payload.phone.strip(),
+        "location": cust_loc,
+    }
+    db.set_document("users", customer_uid, user_data)
+    return user_data
+
+
 @router.post("/jobs", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 def api_create_job(
     payload: JobCreate,
@@ -24,7 +54,7 @@ def api_create_job(
     location coordinates, and optional budget.
     """
     customer_id = current_user.get("uid")
-    return create_job(payload, customer_id)
+    return create_job(payload, customer_id, current_user=current_user)
 
 
 @router.get("/jobs/nearby", response_model=List[NearbyJobResponse])

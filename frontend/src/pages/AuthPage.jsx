@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { ROLES, CATEGORIES } from '../types';
-import { INITIAL_CUSTOMER, INITIAL_WORKER, SEED_WORKERS } from '../api/mockData';
 import {
   User,
   Briefcase,
@@ -26,7 +25,7 @@ export function AuthPage() {
   const [activePortal, setActivePortal] = useState(ROLES.CUSTOMER);
 
   // Form states
-  const [phone, setPhone] = useState('9876543210');
+  const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [selectedTrade, setSelectedTrade] = useState('plumber');
   const [rate, setRate] = useState('350');
@@ -42,26 +41,8 @@ export function AuthPage() {
     setActivePortal(portal);
     setOtpSent(false);
     setOtpInput('');
-    if (portal === ROLES.CUSTOMER) {
-      setPhone('9876543210');
-      setName('Priya Sharma');
-    } else {
-      setPhone('9820112345');
-      setName('Ramesh Kanojia');
-    }
-  };
-
-  // 1-Click Demo Profiles for instant testing
-  const handleQuickCustomer = () => {
-    loginAsCustomer(INITIAL_CUSTOMER);
-    useToastStore.getState().success(`Logged in as Customer (${INITIAL_CUSTOMER.name})`);
-    navigate('/');
-  };
-
-  const handleQuickWorker = (seed = INITIAL_WORKER) => {
-    loginAsWorker(seed);
-    useToastStore.getState().success(`Logged in as Worker (${seed.name})`);
-    navigate('/worker');
+    setPhone('');
+    setName('');
   };
 
   // Step 1: Send OTP
@@ -91,14 +72,14 @@ export function AuthPage() {
       setIsVerifying(false);
       if (activePortal === ROLES.CUSTOMER) {
         loginAsCustomer({
-          name: name.trim() || 'Priya Sharma',
+          name: name.trim() || 'Customer',
           phone: `+91 ${phone}`,
         });
         useToastStore.getState().success('Customer login successful!');
         navigate('/');
       } else {
         loginAsWorker({
-          name: name.trim() || 'Ramesh Kanojia',
+          name: name.trim() || 'Worker',
           phone: `+91 ${phone}`,
           skills: [selectedTrade],
           rates: { [selectedTrade]: Number(rate) },
@@ -180,7 +161,7 @@ export function AuthPage() {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder={activePortal === ROLES.CUSTOMER ? 'Priya Sharma' : 'Ramesh Kanojia'}
+                placeholder={activePortal === ROLES.CUSTOMER ? 'Enter your full name' : 'Enter worker name'}
                 className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
@@ -294,57 +275,6 @@ export function AuthPage() {
               </button>
             </div>
           </form>
-        )}
-      </div>
-
-      {/* 1-Click Fast Track Testing */}
-      <div className="space-y-2.5">
-        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
-          Or Quick Test Account
-        </p>
-
-        {activePortal === ROLES.CUSTOMER ? (
-          <button
-            type="button"
-            onClick={handleQuickCustomer}
-            className="w-full p-3.5 rounded-2xl border-2 border-brand-200 bg-white hover:bg-brand-50/50 text-left transition-all shadow-sm flex items-center justify-between group active:scale-95"
-          >
-            <div className="flex items-center gap-3">
-              <img
-                src={INITIAL_CUSTOMER.avatarUrl || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80'}
-                alt="Priya"
-                className="w-10 h-10 rounded-full object-cover border border-brand-300"
-              />
-              <div>
-                <p className="font-black text-xs text-slate-900 group-hover:text-brand-600">
-                  Quick Sign-In: Priya Sharma
-                </p>
-                <p className="text-[11px] text-slate-500">Customer • Mira Road East</p>
-              </div>
-            </div>
-            <span className="text-xs font-black text-brand-600">Enter &rarr;</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => handleQuickWorker(INITIAL_WORKER)}
-            className="w-full p-3.5 rounded-2xl border-2 border-amber-200 bg-white hover:bg-amber-50/50 text-left transition-all shadow-sm flex items-center justify-between group active:scale-95"
-          >
-            <div className="flex items-center gap-3">
-              <img
-                src={INITIAL_WORKER.avatarUrl}
-                alt="Ramesh"
-                className="w-10 h-10 rounded-full object-cover border border-amber-300"
-              />
-              <div>
-                <p className="font-black text-xs text-slate-900 group-hover:text-amber-700">
-                  Quick Sign-In: Ramesh Kanojia
-                </p>
-                <p className="text-[11px] text-slate-500">Verified Plumber • 4.8★ Gold</p>
-              </div>
-            </div>
-            <span className="text-xs font-black text-amber-700">Enter &rarr;</span>
-          </button>
         )}
       </div>
 

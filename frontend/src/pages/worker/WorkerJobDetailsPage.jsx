@@ -39,6 +39,7 @@ export function WorkerJobDetailsPage() {
     stopPolling,
   } = useJobStore();
 
+  const job = currentJob || { id: jobId, status: JOB_STATUS.OPEN, category: 'Plumber' };
   const defaultRate = (user?.rates && user?.rates[job.category]) || job.budget || 350;
   const [quotePrice, setQuotePrice] = useState(defaultRate);
   const [counterPrice, setCounterPrice] = useState('');
@@ -60,8 +61,6 @@ export function WorkerJobDetailsPage() {
       setQuotePrice(user.rates[job.category]);
     }
   }, [user, job?.category]);
-
-  const job = currentJob || { id: jobId, status: JOB_STATUS.OPEN, category: 'Plumber' };
   const latestOffer = offers.length > 0 ? offers[offers.length - 1] : null;
   const isCustomerPendingOffer = latestOffer && latestOffer.status === OFFER_STATUS.PENDING && latestOffer.by === 'customer';
 
@@ -188,7 +187,7 @@ export function WorkerJobDetailsPage() {
         <div className="bg-slate-50 rounded-2xl p-3 flex items-center justify-between border border-slate-100 text-xs">
           <div>
             <span className="text-[10px] text-slate-500 font-medium block">Customer</span>
-            <span className="font-extrabold text-slate-900">{job.customerName || 'Priya Sharma'}</span>
+            <span className="font-extrabold text-slate-900">{job.customerName || 'Customer'}</span>
           </div>
           <div className="text-right">
             <span className="text-[10px] text-slate-500 font-medium block">Customer Budget</span>
@@ -207,17 +206,19 @@ export function WorkerJobDetailsPage() {
               </div>
               <div className="text-xs">
                 <p className="font-bold text-slate-900">{job.customerName || 'Customer'}</p>
-                <p className="text-slate-500 text-[10px]">{job.customerPhone || '+91 98765 43210'}</p>
+                <p className="text-slate-500 text-[10px]">{job.customerPhone || 'Phone not provided'}</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <a
-                href={`tel:${job.customerPhone || '9876543210'}`}
-                className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-1 shadow-sm"
-              >
-                <Phone className="w-3.5 h-3.5" /> Call
-              </a>
+              {job.customerPhone ? (
+                <a
+                  href={`tel:${job.customerPhone}`}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-1 shadow-sm"
+                >
+                  <Phone className="w-3.5 h-3.5" /> Call
+                </a>
+              ) : null}
               <button
                 onClick={() => setShowReportModal(true)}
                 className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-slate-100"

@@ -55,29 +55,84 @@ def get_current_user(
             pass
 
     # 2. Local Dev / Mock token resolution
-    # Strip optional prefixes like 'dev-' or 'mock-'
-    clean_uid = token.replace("dev-", "").replace("mock-", "")
+    # Strip optional prefixes like 'token-customer-', 'token-worker-', 'dev-', 'mock-'
+    clean_uid = (
+        token.replace("token-customer-", "")
+        .replace("token-worker-", "")
+        .replace("token-admin-", "")
+        .replace("dev-", "")
+        .replace("mock-", "")
+        .strip()
+    )
+
+    # Common ID alias mappings between frontend mock IDs and backend seed IDs
+    id_aliases = {
+        "cust_priya_1": "cust_priya",
+        "w_plumb_1": "worker_plumber_1",
+        "w_plumb_2": "worker_plumber_2",
+        "w_plumb_3": "worker_plumber_3",
+        "w_plumb_unverified": "worker_plumber_unverified",
+        "w_elec_1": "worker_elec_1",
+        "w_elec_2": "worker_elec_2",
+        "w_elec_3": "worker_elec_3",
+        "w_elec_unverified": "worker_elec_unverified",
+        "w_clean_1": "worker_cleaner_1",
+        "w_clean_2": "worker_cleaner_2",
+        "w_clean_3": "worker_cleaner_3",
+        "w_paint_1": "worker_painter_1",
+        "w_maid_1": "worker_maid_1",
+        "w_cook_1": "worker_cook_1",
+    }
+    resolved_uid = id_aliases.get(clean_uid, clean_uid)
     
     # Check if user exists in the database
-    user_doc = db.get_document("users", clean_uid) or db.get_document("users", token)
+    user_doc = (
+        db.get_document("users", resolved_uid)
+        or db.get_document("users", clean_uid)
+        or db.get_document("users", token)
+    )
     if user_doc:
         return {
-            "uid": user_doc.get("uid", clean_uid),
+            "uid": user_doc.get("uid", resolved_uid),
             "role": user_doc.get("role", "customer"),
-            "name": user_doc.get("name", clean_uid),
+            "name": user_doc.get("name", resolved_uid),
             "phone": user_doc.get("phone", ""),
             "location": user_doc.get("location", {}),
             "is_firebase": False
         }
 
-    # If worker exists by this id
-    worker_doc = db.get_document("workers", clean_uid) or db.get_document("workers", token)
+    # If worker exists by this id or alias
+    worker_doc = (
+        db.get_document("workers", resolved_uid)
+        or db.get_document("workers", clean_uid)
+        or db.get_document("workers", token)
+    )
     if worker_doc:
         return {
-            "uid": worker_doc.get("uid", clean_uid),
+            "uid": worker_doc.get("uid", resolved_uid),
             "role": "worker",
-            "name": worker_doc.get("name", f"Worker {clean_uid}"),
+            "name": worker_doc.get("name", f"Worker {resolved_uid}"),
             "location": worker_doc.get("location", {}),
+            "is_firebase": False
+        }
+
+    # In dev mode: auto-provision new customer if token indicates customer role
+    if "customer" in token or clean_uid.startswith("cust_"):
+        new_customer = {
+            "uid": clean_uid,
+            "role": "customer",
+            "name": f"Customer {clean_uid[-4:]}" if len(clean_uid) >= 4 else "Customer",
+            "phone": "",
+            "language": "en",
+            "location": {"lat": 19.2825, "lng": 72.8570, "address": "Mira Road East, Mumbai"}
+        }
+        db.set_document("users", clean_uid, new_customer)
+        return {
+            "uid": clean_uid,
+            "role": "customer",
+            "name": new_customer["name"],
+            "phone": new_customer["phone"],
+            "location": new_customer["location"],
             "is_firebase": False
         }
 

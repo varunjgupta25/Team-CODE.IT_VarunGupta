@@ -7,13 +7,47 @@ from models.job import JobCreate
 from services.distance import haversine_distance, calculate_eta
 
 
-def create_job(job_data: JobCreate, customer_id: str) -> Dict[str, Any]:
+def create_job(job_data: JobCreate, customer_id: str, current_user: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     job_id = f"job_{uuid.uuid4().hex[:10]}"
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    user_name = job_data.customerName
+    user_phone = job_data.customerPhone
+
+    if not user_name:
+        if current_user and current_user.get("name") and current_user.get("name") != "Priya Sharma":
+            user_name = current_user.get("name")
+        else:
+            db_user = db.get_document("users", customer_id)
+            if db_user and db_user.get("name"):
+                user_name = db_user.get("name")
+
+    if not user_phone:
+        if current_user and current_user.get("phone"):
+            user_phone = current_user.get("phone")
+        else:
+            db_user = db.get_document("users", customer_id)
+            if db_user and db_user.get("phone"):
+                user_phone = db_user.get("phone")
+
+    user_name = user_name or "Customer"
+    user_phone = user_phone or ""
+
+    # Keep users collection updated with customer details
+    existing_user = db.get_document("users", customer_id) or {}
+    db.set_document("users", customer_id, {
+        **existing_user,
+        "uid": customer_id,
+        "role": "customer",
+        "name": user_name,
+        "phone": user_phone,
+    })
 
     doc_data = {
         "id": job_id,
         "customerId": customer_id,
+        "customerName": user_name,
+        "customerPhone": user_phone,
         "category": job_data.category.lower().strip(),
         "description": job_data.description,
         "location": job_data.location.model_dump(),
@@ -39,6 +73,15 @@ def get_job(job_id: str, requester: Optional[Dict[str, Any]] = None) -> Dict[str
         )
 
     response_job = dict(job)
+
+    # Enrich customer details if missing from historical/legacy job record
+    if not response_job.get("customerName") or not response_job.get("customerPhone"):
+        cust_user = db.get_document("users", response_job.get("customerId", ""))
+        if cust_user:
+            if not response_job.get("customerName"):
+                response_job["customerName"] = cust_user.get("name")
+            if not response_job.get("customerPhone"):
+                response_job["customerPhone"] = cust_user.get("phone")
 
     # Privacy Protection (PRD Section 9):
     # Exact customer address is revealed to a worker only if they are the accepted worker for an active/completed booking.

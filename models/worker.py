@@ -19,6 +19,9 @@ class WorkerBase(BaseModel):
     serviceRadiusKm: float = Field(5.0, gt=0, description="Maximum service coverage radius in km")
     isFlagged: bool = Field(False, description="Flagged for admin review if 3+ reports")
     flagged: bool = Field(False, description="Alias for isFlagged")
+    avatarUrl: Optional[str] = Field(None, description="Worker profile avatar image URL")
+    about: Optional[str] = Field(None, description="Short bio or experience description")
+    rate: Optional[float] = Field(None, description="Selected skill rate")
 
 
 class WorkerCreate(WorkerBase):

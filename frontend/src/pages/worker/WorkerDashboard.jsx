@@ -142,59 +142,72 @@ export function WorkerDashboard() {
             description="All nearby requests have been claimed or you are caught up! Check back soon or switch on your availability."
           />
         ) : (
-          nearbyJobs.map((job) => (
-            <div
-              key={job.id}
-              onClick={() => navigate(`/worker/job/${job.id}`)}
-              className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm hover:border-brand-500 cursor-pointer active:scale-[0.98] transition-all space-y-3 group"
-            >
-              {/* Category & Urgency Badges */}
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                  {job.category}
-                </span>
+          nearbyJobs.map((item) => {
+            const job = item.job ? { ...item.job, distanceKm: item.distanceKm, etaMinutes: item.etaMinutes, within30: item.within30 } : item;
+            const isNegotiating = job.status === 'negotiating';
+            return (
+              <div
+                key={job.id}
+                onClick={() => navigate(`/worker/job/${job.id}`)}
+                className={`bg-white rounded-3xl p-4 border shadow-sm hover:border-brand-500 cursor-pointer active:scale-[0.98] transition-all space-y-3 group ${
+                  isNegotiating ? 'border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/20' : 'border-slate-200'
+                }`}
+              >
+                {/* Category & Urgency Badges */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                      {job.category}
+                    </span>
+                    {isNegotiating && (
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 animate-pulse flex items-center gap-1">
+                        🔥 Offer Received
+                      </span>
+                    )}
+                  </div>
 
-                {job.within30 ? (
-                  <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-1">
-                    <Clock className="w-3 h-3" /> Rush (&le;30 min)
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-bold text-slate-500">
-                    ETA ~{job.etaMinutes} min
-                  </span>
-                )}
-              </div>
-
-              {/* Description */}
-              <div>
-                <p className="text-xs font-bold text-slate-900 line-clamp-2 leading-snug">
-                  {job.description}
-                </p>
-                <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span className="line-clamp-1">{job.location?.address}</span>
-                  <span className="font-bold text-brand-600 shrink-0">({job.distanceKm} km)</span>
+                  {job.within30 ? (
+                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Rush (&le;30 min)
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-slate-500">
+                      ETA ~{job.etaMinutes || 5} min
+                    </span>
+                  )}
                 </div>
-              </div>
 
-              {/* Budget & Action Bar */}
-              <div className="bg-slate-50 rounded-2xl p-3 flex items-center justify-between border border-slate-100">
+                {/* Description */}
                 <div>
-                  <span className="text-[10px] text-slate-500 font-medium block">
-                    Customer Budget
-                  </span>
-                  <span className="text-sm font-black text-slate-900">
-                    {job.budget ? formatCurrency(job.budget) : 'Open to offers'}
-                  </span>
+                  <p className="text-xs font-bold text-slate-900 line-clamp-2 leading-snug">
+                    {job.description}
+                  </p>
+                  <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="line-clamp-1">{job.location?.address}</span>
+                    <span className="font-bold text-brand-600 shrink-0">({job.distanceKm ?? 0} km)</span>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1 text-xs font-extrabold text-brand-600 group-hover:translate-x-0.5 transition-transform">
-                  <span>Send Offer</span>
-                  <ChevronRight className="w-4 h-4" />
+                {/* Budget & Action Bar */}
+                <div className="bg-slate-50 rounded-2xl p-3 flex items-center justify-between border border-slate-100">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-medium block">
+                      Customer Budget
+                    </span>
+                    <span className="text-sm font-black text-slate-900">
+                      {job.budget ? formatCurrency(job.budget) : 'Open to offers'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1 text-xs font-extrabold text-brand-600 group-hover:translate-x-0.5 transition-transform">
+                    <span>{isNegotiating ? 'View & Accept Offer' : 'Send Offer'}</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

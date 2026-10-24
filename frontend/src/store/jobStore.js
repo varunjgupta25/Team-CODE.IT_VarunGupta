@@ -72,7 +72,18 @@ export const useJobStore = create((set, get) => ({
   fetchNearbyJobs: async (coords) => {
     set({ isLoading: true });
     try {
-      const jobs = await api.getNearbyJobs(coords);
+      const raw = await api.getNearbyJobs(coords);
+      const jobs = (raw || []).map((item) => {
+        if (item && item.job) {
+          return {
+            ...item.job,
+            distanceKm: item.distanceKm,
+            etaMinutes: item.etaMinutes,
+            within30: item.within30 ?? (item.etaMinutes <= 30),
+          };
+        }
+        return item;
+      });
       set({ nearbyJobs: jobs, isLoading: false });
       return jobs;
     } catch (err) {

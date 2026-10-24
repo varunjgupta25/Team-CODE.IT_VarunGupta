@@ -58,6 +58,48 @@ app.add_middleware(
 UNPROCESSABLE_CODE = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
 
 
+@app.middleware("http")
+async def live_activity_logger(request: Request, call_next):
+    """
+    Prints high-visibility, human-readable terminal logs for every
+    customer and worker action in real-time.
+    """
+    method = request.method
+    path = request.url.path
+
+    action_label = None
+    if method == "POST" and path in ["/jobs", "/api/jobs"]:
+        action_label = "📦 [CUSTOMER] Placed a New Job Request"
+    elif method == "GET" and path in ["/workers/match", "/api/workers/match"]:
+        action_label = "🔍 [MATCHING] Customer searching for nearby verified workers"
+    elif method == "POST" and path in ["/workers/register", "/api/workers/register"]:
+        action_label = "👷 [WORKER] New Worker Registered & Verified"
+    elif method == "POST" and "/offers" in path and "/accept" in path:
+        action_label = "🤝 [DEAL ACCEPTED] Offer Accepted! Booking Confirmed"
+    elif method == "POST" and "/offers" in path and "/counter" in path:
+        action_label = "💬 [NEGOTIATION] Counter-Offer Submitted"
+    elif method == "POST" and path in ["/offers", "/api/offers"]:
+        action_label = "💰 [OFFER SENT] New Price Proposal Sent"
+    elif method == "POST" and "/start" in path:
+        action_label = "🚀 [WORKER] Worker Started the Job (In Progress)"
+    elif method == "POST" and "/complete" in path:
+        action_label = "✅ [WORKER] Worker Completed the Job!"
+    elif method == "POST" and path in ["/reviews", "/api/reviews"]:
+        action_label = "⭐ [REVIEW] Customer Submitted a Rating & Review"
+    elif method == "POST" and path in ["/sos", "/api/sos"]:
+        action_label = "🚨 [SAFETY ALERT] Emergency SOS Triggered!"
+
+    response = await call_next(request)
+
+    if action_label:
+        print(f"\n=======================================================")
+        print(f"{action_label}")
+        print(f"--> {method} {path} (HTTP {response.status_code})")
+        print(f"=======================================================\n", flush=True)
+
+    return response
+
+
 # Exception handler to format validation errors cleanly as {"detail": "..."}
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):

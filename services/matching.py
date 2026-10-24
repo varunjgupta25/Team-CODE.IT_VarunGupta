@@ -170,8 +170,13 @@ def match_workers_for_job(job_id: str, requester: Optional[Dict[str, Any]] = Non
         trust_score, trust_badge = get_worker_trust_info(worker, len(worker_reports))
 
         worker_dict = dict(worker)
+        worker_dict["rate"] = worker_rate
         worker_dict["trustScore"] = trust_score
         worker_dict["trustBadge"] = trust_badge
+        if not worker_dict.get("avatarUrl"):
+            worker_dict["avatarUrl"] = f"https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80"
+        if not worker_dict.get("about"):
+            worker_dict["about"] = f"Experienced {job_category} with {worker.get('jobsDone', 0)}+ completed jobs in Mira Road."
 
         matched_results.append({
             "worker":      worker_dict,

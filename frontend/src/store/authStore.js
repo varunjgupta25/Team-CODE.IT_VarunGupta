@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { storage } from '../lib/storage';
 import { ROLES } from '../types';
-import { INITIAL_CUSTOMER, INITIAL_WORKER, SEED_WORKERS } from '../api/mockData';
 import { api } from '../api';
 
 const AUTH_USER_KEY = 'rb_auth_user_session';
@@ -18,23 +17,35 @@ export const useAuthStore = create((set, get) => ({
   generatedOtp: null,
 
   // Login as Customer (Strict role enforcement)
-  loginAsCustomer: (userData) => {
+  loginAsCustomer: async (userData) => {
     const customerUser = {
       uid: userData?.uid || `cust_${Date.now()}`,
-      name: userData?.name || 'Priya Sharma',
-      phone: userData?.phone || '+91 98765 43210',
+      name: userData?.name || 'Customer',
+      phone: userData?.phone || '',
       role: ROLES.CUSTOMER,
-      avatarUrl: userData?.avatarUrl || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+      avatarUrl: userData?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       location: userData?.location || {
         lat: 19.2812,
         lng: 72.8697,
-        address: 'B-402, Shanti Park, Mira Road East, Mumbai',
+        address: 'Mira Road East, Mumbai',
       },
     };
 
     storage.set(AUTH_ROLE_KEY, ROLES.CUSTOMER);
     storage.set(AUTH_USER_KEY, customerUser);
     localStorage.setItem('rb_auth_token', `token-customer-${customerUser.uid}`);
+
+    // Dynamic backend customer registration
+    try {
+      await api.registerCustomer({
+        uid: customerUser.uid,
+        name: customerUser.name,
+        phone: customerUser.phone,
+        location: customerUser.location,
+      });
+    } catch (err) {
+      console.warn('Customer sync to backend:', err);
+    }
 
     set({
       user: customerUser,
@@ -46,27 +57,57 @@ export const useAuthStore = create((set, get) => ({
     return customerUser;
   },
 
-  // Login as Worker (Strict role enforcement)
-  loginAsWorker: (workerData) => {
-    // If logging in as an existing seeded worker or new worker
-    const matchedSeedWorker = SEED_WORKERS.find(
-      (w) => w.phone === workerData?.phone || w.uid === workerData?.uid
-    );
+  // Login as Worker (Strict role enforcement, dynamic registration)
+  loginAsWorker: async (workerData) => {
+    const workerUid = workerData?.uid || `worker_${Date.now()}`;
+    const skills = workerData?.skills && workerData.skills.length > 0 ? workerData.skills : ['plumber'];
+    const rates = workerData?.rates || { [skills[0]]: 350 };
 
     const workerUser = {
-      ...(matchedSeedWorker || INITIAL_WORKER),
-      ...workerData,
+      uid: workerUid,
+      name: workerData?.name || 'Worker',
+      phone: workerData?.phone || '',
+      skills,
+      rates,
       role: ROLES.WORKER,
+      isAvailableNow: true,
+      verified: true,
+      verificationStatus: 'verified',
+      rating: 5.0,
+      jobsDone: 0,
+      trustScore: 90.0,
+      trustBadge: 'Gold',
+      avatarUrl: workerData?.avatarUrl || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80',
+      location: workerData?.location || {
+        lat: 19.2812,
+        lng: 72.8697,
+        address: 'Mira Road East, Mumbai',
+      },
     };
 
     storage.set(AUTH_ROLE_KEY, ROLES.WORKER);
     storage.set(AUTH_USER_KEY, workerUser);
     localStorage.setItem('rb_auth_token', `token-worker-${workerUser.uid}`);
 
+    // Dynamic backend registration
+    try {
+      await api.registerWorker({
+        uid: workerUser.uid,
+        name: workerUser.name,
+        phone: workerUser.phone,
+        skills: workerUser.skills,
+        rates: workerUser.rates,
+        location: workerUser.location,
+        avatarUrl: workerUser.avatarUrl,
+      });
+    } catch (err) {
+      console.warn('Worker sync to backend:', err);
+    }
+
     set({
       user: workerUser,
       role: ROLES.WORKER,
-      isAvailableNow: workerUser.isAvailableNow ?? true,
+      isAvailableNow: true,
       pendingOtpPhone: null,
       generatedOtp: null,
     });

@@ -77,9 +77,9 @@ export const mockStore = {
     const jobs = getJobs();
     const newJob = {
       id: `job_${Date.now()}`,
-      customerId: jobPayload.customerId || INITIAL_CUSTOMER.uid,
-      customerName: jobPayload.customerName || INITIAL_CUSTOMER.name,
-      customerPhone: jobPayload.customerPhone || INITIAL_CUSTOMER.phone,
+      customerId: jobPayload.customerId || `cust_${Date.now()}`,
+      customerName: jobPayload.customerName || 'Customer',
+      customerPhone: jobPayload.customerPhone || '',
       category: jobPayload.category,
       description: jobPayload.description,
       mode: jobPayload.mode || 'on_demand', // 'on_demand' or 'scheduled'

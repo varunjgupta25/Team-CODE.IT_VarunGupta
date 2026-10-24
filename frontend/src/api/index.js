@@ -83,6 +83,21 @@ export const api = {
   },
 
   // Worker Profile Updates
+  async getWorker(workerId) {
+    if (isMock) return null;
+    return apiClient.get(`/workers/${workerId}`);
+  },
+
+  async registerWorker(payload) {
+    if (isMock) return payload;
+    return apiClient.post('/workers/register', payload);
+  },
+
+  async registerCustomer(payload) {
+    if (isMock) return payload;
+    return apiClient.post('/customers/register', payload);
+  },
+
   async updateWorkerAvailability(workerId, isAvailable) {
     if (isMock) return mockStore.updateWorker(workerId, { isAvailableNow: isAvailable });
     return apiClient.patch(`/workers/${workerId}`, { isAvailableNow: isAvailable });
