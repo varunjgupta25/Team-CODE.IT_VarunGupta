@@ -201,3 +201,69 @@ def test_worker_with_three_reports_gets_flagged(client, auth_customer_headers):
     w3 = db.get_document("workers", worker_id)
     assert w3["isFlagged"] is True
     assert w3["flagged"] is True
+
+
+def test_rating_bounds_1_to_5_enforced(client, auth_customer_headers):
+    """
+    Rating must be between 1.0 and 5.0 (HTTP 422 for values < 1.0 or > 5.0).
+    """
+    # Rating 0.5 (< 1.0) -> 422
+    res_low = client.post("/reviews", json={
+        "jobId": "job_test_completed",
+        "workerId": "worker_elec_1",
+        "rating": 0.5,
+        "comment": "Too low"
+    }, headers=auth_customer_headers)
+    assert res_low.status_code == 422
+
+    # Rating 5.5 (> 5.0) -> 422
+    res_high = client.post("/reviews", json={
+        "jobId": "job_test_completed",
+        "workerId": "worker_elec_1",
+        "rating": 5.5,
+        "comment": "Too high"
+    }, headers=auth_customer_headers)
+    assert res_high.status_code == 422
+
+
+def test_trust_score_range_and_sensitivity():
+    """
+    Trust score stays strictly within 0-100 and responds sensibly to
+    verified status, rating, jobsDone, and report counts.
+    """
+    from services.trust import compute_trust_score, compute_trust_badge
+
+    base_worker = {
+        "verified": False,
+        "rating": 3.0,
+        "jobsDone": 5,
+    }
+    score_unverified = compute_trust_score(base_worker, reports_count=0)
+    assert 0.0 <= score_unverified <= 100.0
+
+    # 1. Verified bonus (+30)
+    verified_worker = {**base_worker, "verified": True}
+    score_verified = compute_trust_score(verified_worker, reports_count=0)
+    assert score_verified == score_unverified + 30.0
+
+    # 2. Rating sensitivity (higher rating -> higher score)
+    high_rating_worker = {**verified_worker, "rating": 5.0}
+    score_high_rating = compute_trust_score(high_rating_worker, reports_count=0)
+    assert score_high_rating > score_verified
+
+    # 3. Jobs done sensitivity
+    experienced_worker = {**high_rating_worker, "jobsDone": 50}
+    score_experienced = compute_trust_score(experienced_worker, reports_count=0)
+    assert score_experienced > score_high_rating
+    assert score_experienced <= 100.0
+
+    # 4. Reports penalty
+    score_with_reports = compute_trust_score(experienced_worker, reports_count=2)
+    assert score_with_reports < score_experienced
+
+    # 5. Badges mapping
+    assert compute_trust_badge(85.0) == "Gold"
+    assert compute_trust_badge(65.0) == "Silver"
+    assert compute_trust_badge(45.0) == "Bronze"
+    assert compute_trust_badge(30.0) == "New"
+

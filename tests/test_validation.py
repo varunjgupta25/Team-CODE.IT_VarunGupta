@@ -189,3 +189,27 @@ def test_post_sos_and_reports_validation_errors(client, auth_customer_headers):
         "reason": ""
     }, headers=auth_customer_headers)
     assert res.status_code == 422
+
+
+def test_empty_body_and_wrong_types_return_422_with_detail_string(client, auth_customer_headers):
+    """
+    Empty body and wrong types on endpoints return 422 with {"detail": "..."} string (never 500).
+    """
+    for endpoint in ["/jobs", "/offers", "/reviews", "/reports", "/sos"]:
+        res = client.post(endpoint, json={}, headers=auth_customer_headers)
+        assert res.status_code == 422, f"{endpoint} did not return 422 on empty body: {res.status_code}"
+        body = res.json()
+        assert "detail" in body
+        assert isinstance(body["detail"], str), f"{endpoint} detail is not a string: {type(body['detail'])}"
+
+    # Wrong types (e.g. budget = "abc", lat = "invalid")
+    res_wrong_type = client.post("/jobs", json={
+        "category": "electrician",
+        "description": "Short circuit",
+        "location": {"lat": "invalid_lat", "lng": 72.8570, "address": "Mira Road"},
+        "budget": "not_a_number"
+    }, headers=auth_customer_headers)
+    assert res_wrong_type.status_code == 422
+    assert "detail" in res_wrong_type.json()
+    assert isinstance(res_wrong_type.json()["detail"], str)
+

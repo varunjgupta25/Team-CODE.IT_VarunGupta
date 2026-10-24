@@ -143,6 +143,54 @@ class TestRoadRoute:
             result = routing.road_route(19.280, 72.870, 19.300, 72.900)
         assert result is None
 
+    def test_road_route_picks_fastest_path_over_shortest_distance(self, monkeypatch):
+        """road_route must pick the fastest (travel_time) path, not the shortest distance."""
+        nx = pytest.importorskip("networkx")
+        ox = pytest.importorskip("osmnx")
+
+        # Graph with two paths between node 0 and node 1:
+        # Path A (via 2): shorter distance (200m), slower (120s)
+        # Path B (via 3): longer distance (800m), faster (30s)
+        G = nx.MultiDiGraph()
+        nodes = [
+            (0, {"y": 19.280, "x": 72.870}),
+            (1, {"y": 19.284, "x": 72.874}),
+            (2, {"y": 19.281, "x": 72.871}),
+            (3, {"y": 19.283, "x": 72.873}),
+        ]
+        G.add_nodes_from(nodes)
+        # Path A: 0 -> 2 -> 1
+        G.add_edge(0, 2, 0, length=100.0, travel_time=60.0)
+        G.add_edge(2, 1, 0, length=100.0, travel_time=60.0)
+        # Path B: 0 -> 3 -> 1
+        G.add_edge(0, 3, 0, length=400.0, travel_time=15.0)
+        G.add_edge(3, 1, 0, length=400.0, travel_time=15.0)
+
+        self._patch_graph(monkeypatch, G)
+
+        call_count = {"n": 0}
+        def fake_nearest(graph, X, Y, return_dist=False):
+            node = 0 if call_count["n"] == 0 else 1
+            call_count["n"] += 1
+            if return_dist:
+                return node, 10.0
+            return node
+
+        import services.routing as routing
+        with patch("osmnx.nearest_nodes", side_effect=fake_nearest):
+            result = routing.road_route(19.280, 72.870, 19.284, 72.874)
+
+        assert result is not None
+        # Dijkstra should pick Path B with 30s travel_time = 0.5 minutes
+        assert abs(result["etaMinutes"] - 0.5) < 0.05
+        # Total distance is 800m = 0.8km
+        assert abs(result["distanceKm"] - 0.8) < 0.05
+        # Polyline contains node 3, not node 2
+        path_coords = result["polyline"]
+        assert len(path_coords) == 3
+        assert path_coords[1] == [19.283, 72.873]
+
+
 
 class TestRoadEta:
     def test_road_eta_wraps_road_route(self, monkeypatch):
@@ -346,68 +394,138 @@ class TestMatchingWithRouting:
 # ──────────────────────────── /route endpoint ────────────────────────────────
 
 class TestRouteEndpoint:
-    def _make_client(self):
-        from fastapi.testclient import TestClient
-        from main import app
-        return TestClient(app)
-
-    def _auth_headers(self, client):
-        """Reuse the existing auth-mock mechanism from conftest if present."""
-        return {"Authorization": "Bearer test_customer_token"}
-
-    def test_route_returns_haversine_fallback(self, monkeypatch):
-        """
-        When the road graph is unavailable, /route returns Haversine values
-        with an empty polyline.
-        """
-        import services.routing as routing
-        monkeypatch.setattr(routing, "_graph", None)
-        monkeypatch.setattr(routing, "_graph_loaded", True)
-
+    def test_route_200_valid_job_worker_returns_polyline(self, monkeypatch):
+        """Valid job and worker with existing road route returns 200 with polyline."""
         from core.database import db
-        job    = {"id": "j1", "location": {"lat": 19.2813, "lng": 72.8688},
-                  "category": "plumber", "status": "open"}
-        worker = {"id": "w1", "uid": "w1", "location": {"lat": 19.285, "lng": 72.872}}
+        from core.auth import get_current_user
+        from main import app
+        import services.routing as routing
 
-        def fake_get(col, id):
-            if col == "jobs":   return job
-            if col == "workers": return worker
-            return None
+        job = {
+            "id": "job_r1",
+            "customerId": "cust_test_1",
+            "location": {"lat": 19.280, "lng": 72.870},
+            "category": "plumber",
+            "status": "open"
+        }
+        worker = {
+            "id": "worker_elec_1",
+            "uid": "worker_elec_1",
+            "location": {"lat": 19.288, "lng": 72.878}
+        }
 
-        monkeypatch.setattr(db, "get_document", fake_get)
+        monkeypatch.setattr(db, "get_document", lambda col, id: job if col == "jobs" else (worker if col == "workers" else None))
         monkeypatch.setattr(db, "list_collection", lambda c: [])
         monkeypatch.setattr(db, "query_collection", lambda c, q: [])
 
+        # Mock road_route to return synthetic route
+        fake_route = {
+            "distanceKm": 1.25,
+            "etaMinutes": 2.5,
+            "polyline": [[19.280, 72.870], [19.284, 72.874], [19.288, 72.878]]
+        }
+        monkeypatch.setattr(routing, "road_route", lambda *a, **k: fake_route)
+
+        app.dependency_overrides[get_current_user] = lambda: {"uid": "cust_test_1", "role": "customer", "name": "Priya", "is_firebase": False}
+
+        from fastapi.testclient import TestClient
+        with TestClient(app) as client:
+            resp = client.get("/api/route?jobId=job_r1&workerId=worker_elec_1")
+        app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["distanceKm"] == 1.25
+        assert body["etaMinutes"] == 2.5
+        assert len(body["polyline"]) >= 2
+        assert body["polyline"] == fake_route["polyline"]
+
+    def test_route_404_when_no_route(self, monkeypatch):
+        """When road_route returns None (no road route exists), /route returns 404."""
+        from core.database import db
+        from core.auth import get_current_user
+        from main import app
+        import services.routing as routing
+
+        job = {
+            "id": "job_r1",
+            "customerId": "cust_test_1",
+            "location": {"lat": 19.280, "lng": 72.870},
+            "category": "plumber",
+            "status": "open"
+        }
+        worker = {
+            "id": "worker_elec_1",
+            "uid": "worker_elec_1",
+            "location": {"lat": 19.288, "lng": 72.878}
+        }
+
+        monkeypatch.setattr(db, "get_document", lambda col, id: job if col == "jobs" else (worker if col == "workers" else None))
+        monkeypatch.setattr(db, "list_collection", lambda c: [])
+        monkeypatch.setattr(db, "query_collection", lambda c, q: [])
+        monkeypatch.setattr(routing, "road_route", lambda *a, **k: None)
+
+        app.dependency_overrides[get_current_user] = lambda: {"uid": "cust_test_1", "role": "customer", "name": "Priya", "is_firebase": False}
+
+        from fastapi.testclient import TestClient
+        with TestClient(app) as client:
+            resp = client.get("/api/route?jobId=job_r1&workerId=worker_elec_1")
+        app.dependency_overrides.clear()
+
+        assert resp.status_code == 404
+        assert "no road route found" in resp.json()["detail"].lower()
+
+    def test_route_401_without_token(self):
+        """Calling /route without token returns 401 Unauthorized."""
         from fastapi.testclient import TestClient
         from main import app
         with TestClient(app) as client:
-            resp = client.get(
-                "/api/route?jobId=j1&workerId=w1",
-                headers={"Authorization": "Bearer test_customer_token"},
-            )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert "distanceKm" in body
-        assert "etaMinutes" in body
-        assert body["polyline"] == []
-        assert body["distanceKm"] > 0
-        assert body["etaMinutes"] > 0
+            resp = client.get("/api/route?jobId=job_test_open&workerId=worker_elec_1")
+        assert resp.status_code == 401
+
+    def test_route_403_for_non_participant(self, monkeypatch):
+        """A user who is neither the job customer nor the target worker nor admin gets 403."""
+        from core.database import db
+        from core.auth import get_current_user
+        from main import app
+
+        job = {
+            "id": "job_r1",
+            "customerId": "cust_test_1",
+            "location": {"lat": 19.280, "lng": 72.870},
+            "category": "plumber",
+            "status": "open"
+        }
+        worker = {
+            "id": "worker_elec_1",
+            "uid": "worker_elec_1",
+            "location": {"lat": 19.288, "lng": 72.878}
+        }
+
+        monkeypatch.setattr(db, "get_document", lambda col, id: job if col == "jobs" else (worker if col == "workers" else None))
+        monkeypatch.setattr(db, "list_collection", lambda c: [])
+        monkeypatch.setattr(db, "query_collection", lambda c, q: [])
+
+        # Third party customer calls route
+        app.dependency_overrides[get_current_user] = lambda: {"uid": "cust_test_2", "role": "customer", "name": "Amit", "is_firebase": False}
+
+        from fastapi.testclient import TestClient
+        with TestClient(app) as client:
+            resp = client.get("/api/route?jobId=job_r1&workerId=worker_elec_1")
+        app.dependency_overrides.clear()
+
+        assert resp.status_code == 403
 
     def test_route_404_for_unknown_job(self, monkeypatch):
         from core.database import db
         from core.auth import get_current_user
         from main import app
 
-        def fake_get(col, id):
-            return None  # every lookup returns None → job not found
-
-        monkeypatch.setattr(db, "get_document", fake_get)
+        monkeypatch.setattr(db, "get_document", lambda col, id: None)
         monkeypatch.setattr(db, "list_collection", lambda c: [])
         monkeypatch.setattr(db, "query_collection", lambda c, q: [])
 
-        def mock_user():
-            return {"uid": "cust_test_1", "role": "customer", "name": "T", "is_firebase": False}
-        app.dependency_overrides[get_current_user] = mock_user
+        app.dependency_overrides[get_current_user] = lambda: {"uid": "cust_test_1", "role": "customer", "name": "T", "is_firebase": False}
 
         from fastapi.testclient import TestClient
         with TestClient(app) as client:
@@ -420,23 +538,84 @@ class TestRouteEndpoint:
         from core.auth import get_current_user
         from main import app
 
-        job = {"id": "j1", "location": {"lat": 19.2813, "lng": 72.8688},
+        job = {"id": "j1", "customerId": "cust_test_1", "location": {"lat": 19.2813, "lng": 72.8688},
                "category": "plumber", "status": "open"}
 
-        def fake_get(col, id):
-            if col == "jobs": return job
-            return None  # worker not found
-
-        monkeypatch.setattr(db, "get_document", fake_get)
+        monkeypatch.setattr(db, "get_document", lambda col, id: job if col == "jobs" else None)
         monkeypatch.setattr(db, "list_collection", lambda c: [])
         monkeypatch.setattr(db, "query_collection", lambda c, q: [])
 
-        def mock_user():
-            return {"uid": "cust_test_1", "role": "customer", "name": "T", "is_firebase": False}
-        app.dependency_overrides[get_current_user] = mock_user
+        app.dependency_overrides[get_current_user] = lambda: {"uid": "cust_test_1", "role": "customer", "name": "T", "is_firebase": False}
 
         from fastapi.testclient import TestClient
         with TestClient(app) as client:
             resp = client.get("/api/route?jobId=j1&workerId=missing")
         app.dependency_overrides.clear()
         assert resp.status_code == 404
+
+
+class TestRoutingInternalCoverage:
+    def test_load_graph_import_error(self, monkeypatch):
+        """When osmnx or networkx are missing, load_graph returns None."""
+        import services.routing as routing
+        monkeypatch.setattr(routing, "_graph", None)
+        monkeypatch.setattr(routing, "_graph_loaded", False)
+        monkeypatch.setattr(routing, "_try_import", lambda: (_ for _ in ()).throw(ImportError("missing ox")))
+
+        assert routing.load_graph() is None
+
+    def test_load_graph_from_existing_file(self, monkeypatch):
+        """When GraphML cache exists, load_graph loads and returns the graph."""
+        import services.routing as routing
+        nx = pytest.importorskip("networkx")
+        G = nx.MultiDiGraph()
+        G.add_node(1, y=19.28, x=72.87)
+        G.add_edge(1, 1, 0, length=100.0, travel_time=10.0)
+
+        monkeypatch.setattr(routing, "_graph", None)
+        monkeypatch.setattr(routing, "_graph_loaded", False)
+        monkeypatch.setattr("os.path.exists", lambda path: True)
+
+        fake_ox = MagicMock()
+        fake_ox.load_graphml.return_value = G
+        fake_ox.add_edge_speeds.return_value = G
+        fake_ox.add_edge_travel_times.return_value = G
+        monkeypatch.setattr(routing, "_try_import", lambda: (nx, fake_ox))
+
+        result = routing.load_graph()
+        assert result is G
+
+    def test_ensure_travel_time_fallback(self):
+        """When add_edge_speeds raises an exception, fallback computes travel_time from length."""
+        import services.routing as routing
+        nx = pytest.importorskip("networkx")
+        G = nx.MultiDiGraph()
+        G.add_node(1, y=19.28, x=72.87)
+        G.add_edge(1, 1, 0, length=500.0)  # missing travel_time
+
+        fake_ox = MagicMock()
+        fake_ox.add_edge_speeds.side_effect = Exception("Not supported")
+
+        res_G = routing._ensure_travel_time(fake_ox, G)
+        edge_data = list(res_G.edges(data=True))[0][2]
+        assert "travel_time" in edge_data
+        assert edge_data["travel_time"] > 0
+
+    def test_snap_node_exception_returns_none(self):
+        """When nearest_nodes raises an exception, _snap_node returns None."""
+        import services.routing as routing
+        fake_ox = MagicMock()
+        fake_ox.nearest_nodes.side_effect = Exception("K-D tree error")
+
+        res = routing._snap_node(fake_ox, None, 19.28, 72.87)
+        assert res is None
+
+    def test_road_route_import_error(self, monkeypatch):
+        """When _try_import raises ImportError, road_route returns None."""
+        import services.routing as routing
+        monkeypatch.setattr(routing, "_graph", object())
+        monkeypatch.setattr(routing, "_try_import", lambda: (_ for _ in ()).throw(ImportError("no ox")))
+
+        assert routing.road_route(19.28, 72.87, 19.29, 72.88) is None
+
+

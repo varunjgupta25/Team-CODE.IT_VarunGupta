@@ -21,7 +21,7 @@ class FirestoreDB:
     """
 
     def __init__(self):
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._use_mock = settings.USE_MOCK_FIREBASE
         self._data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
         self._store_file = os.path.join(self._data_dir, "store.json")
