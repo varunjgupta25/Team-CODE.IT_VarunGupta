@@ -1,5 +1,6 @@
 {
   "name": "frontend",
+  "author": "Varun jayshankar gupta <varun.j.gupta25@slrtce.in>",
   "private": true,
   "version": "0.0.0",
   "type": "module",

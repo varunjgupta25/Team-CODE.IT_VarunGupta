@@ -1,16 +1,30 @@
-# React + Vite
+# RepairBuddy — Frontend (Mobile-First Web App)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+> **"Blinkit for Blue-Collar Workers"** — Hyperlocal On-Demand Blue-Collar Services Platform  
+> **Author & Developer:** Varun jayshankar gupta ([@varunjgupta25](https://github.com/varunjgupta25))  
+> Built with **React 18 + Vite + Tailwind CSS + Zustand + Leaflet**
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ Features
 
-## React Compiler
+- 📱 **Mobile-First Experience:** Tailored for both Customers and Workers with role-based routing.
+- ⚡ **Ultra-Fast Dispatch:** Blinkit-style 60-second worker matching with Haversine distance and live ETAs.
+- 🤝 **Turn-Based Price Negotiation:** Interactive offer/counter-offer negotiation drawer with instant feedback.
+- 🗺️ **Interactive Leaflet Maps:** Hyperlocal pin-drop job location picker and real-time route visualization.
+- 🛡️ **Safety & Trust System:** 0–100 Trust scores, Gold/Silver/Bronze badges, and 1-tap SOS Emergency alert button.
+- 💼 **Partner Dashboard:** Real-time job request feed, distance filters, and daily/monthly earnings tracker.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## 🚀 Quickstart
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+```bash
+# Install dependencies
+npm install
+
+# Start local development server
+npm run dev
+```
+
+Visit [http://localhost:5173](http://localhost:5173) in your browser.
