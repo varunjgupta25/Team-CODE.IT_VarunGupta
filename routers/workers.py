@@ -23,7 +23,7 @@ def api_match_workers(
     Each worker result includes distanceKm, etaMinutes, within30 flag, and trust tier badge.
     Only customers or admins can query matching workers.
     """
-    return match_workers_for_job(jobId)
+    return match_workers_for_job(jobId, requester=current_user)
 
 
 @router.post("/workers/verify", response_model=WorkerVerifyResponse)

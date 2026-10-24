@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 from core.database import db
 from models.offer import OfferCreate, OfferCounter
+from services.distance import haversine_distance
 
 
 def create_offer(
@@ -48,6 +49,43 @@ def create_offer(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Party '{offer_data.by}' does not match caller role '{caller_role}'"
         )
+
+    # Business rule: A worker cannot offer on a job outside their skill/radius or when unverified
+    if caller_role == "worker" or by_party == "worker":
+        worker_id_to_check = offer_data.workerId
+        worker_doc = db.get_document("workers", worker_id_to_check)
+        if not worker_doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Worker with ID '{worker_id_to_check}' not found"
+            )
+        if not worker_doc.get("verified", False):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unverified worker cannot make offers"
+            )
+        job_category = job.get("category", "").lower().strip()
+        worker_skills = [s.lower().strip() for s in worker_doc.get("skills", [])]
+        if job_category not in worker_skills:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Worker does not have the required skill '{job_category}'"
+            )
+        job_loc = job.get("location", {})
+        worker_loc = worker_doc.get("location", {})
+        if (
+            job_loc.get("lat") is not None
+            and job_loc.get("lng") is not None
+            and worker_loc.get("lat") is not None
+            and worker_loc.get("lng") is not None
+        ):
+            dist = haversine_distance(job_loc["lat"], job_loc["lng"], worker_loc["lat"], worker_loc["lng"])
+            radius = float(worker_doc.get("serviceRadiusKm", 5.0))
+            if dist > radius:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Job is outside worker's service radius ({dist:.2f} km > {radius} km)"
+                )
 
     # Check for existing pending offer between this customer and worker on this job
     existing_offers = db.query_collection("offers", {
@@ -145,13 +183,22 @@ def counter_offer(
             detail="It is not your turn to counter. Waiting for the other party."
         )
 
+    # If worker is countering, verify worker is verified
+    new_by = "worker" if offer_by == "customer" else "customer"
+    if new_by == "worker":
+        w_doc = db.get_document("workers", offer_worker_id)
+        if w_doc and not w_doc.get("verified", False):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unverified worker cannot make offers"
+            )
+
     # Supersede previous offer
     db.update_document("offers", offer_id, {"status": "rejected"})
 
     # Create new counter-offer with opposing party
     new_offer_id = f"offer_{uuid.uuid4().hex[:10]}"
     now_iso = datetime.now(timezone.utc).isoformat()
-    new_by = "worker" if offer_by == "customer" else "customer"
 
     new_doc = {
         "id": new_offer_id,
@@ -172,73 +219,74 @@ def accept_offer(
     caller_uid: str,
     caller_role: str
 ) -> Dict[str, Any]:
-    offer = db.get_document("offers", offer_id)
-    if not offer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Offer with ID '{offer_id}' not found"
-        )
-
-    if offer.get("status") != "pending":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Offer cannot be accepted because its status is '{offer.get('status')}'"
-        )
-
-    job_id = offer.get("jobId")
-    job = db.get_document("jobs", job_id)
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Associated job '{job_id}' not found"
-        )
-
-    if job.get("status") not in ["open", "negotiating"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot accept offer: job status is '{job.get('status')}'"
-        )
-
-    job_customer_id = job.get("customerId")
-    offer_worker_id = offer.get("workerId")
-
-    # Only parties involved can accept
-    if caller_role != "admin":
-        if caller_uid != job_customer_id and caller_uid != offer_worker_id:
+    with db._lock:
+        offer = db.get_document("offers", offer_id)
+        if not offer:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not authorized to accept this offer"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Offer with ID '{offer_id}' not found"
             )
 
-    offer_by = offer.get("by")
-    caller_party = "customer" if caller_uid == job_customer_id else ("worker" if caller_uid == offer_worker_id else caller_role)
+        if offer.get("status") != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Offer cannot be accepted because its status is '{offer.get('status')}'"
+            )
 
-    # Only recipient can accept an offer (cannot accept own offer)
-    if caller_party == offer_by:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot accept your own offer. Waiting for the other party to accept."
-        )
+        job_id = offer.get("jobId")
+        job = db.get_document("jobs", job_id)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Associated job '{job_id}' not found"
+            )
 
-    # 1. Update this offer to accepted
-    updated_offer = db.update_document("offers", offer_id, {"status": "accepted"})
+        if job.get("status") not in ["open", "negotiating"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot accept offer: job status is '{job.get('status')}'"
+            )
 
-    # 2. Update job status to 'accepted', set acceptedWorkerId and finalPrice
-    worker_id = offer.get("workerId")
-    final_price = float(offer.get("price"))
-    db.update_document("jobs", job_id, {
-        "status": "accepted",
-        "acceptedWorkerId": worker_id,
-        "finalPrice": final_price
-    })
+        job_customer_id = job.get("customerId")
+        offer_worker_id = offer.get("workerId")
 
-    # 3. Auto-reject all other pending offers on this job
-    all_job_offers = db.query_collection("offers", {"jobId": job_id})
-    for other in all_job_offers:
-        if other.get("id") != offer_id and other.get("status") == "pending":
-            db.update_document("offers", other.get("id"), {"status": "rejected"})
+        # Only parties involved can accept
+        if caller_role != "admin":
+            if caller_uid != job_customer_id and caller_uid != offer_worker_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You are not authorized to accept this offer"
+                )
 
-    return updated_offer
+        offer_by = offer.get("by")
+        caller_party = "customer" if caller_uid == job_customer_id else ("worker" if caller_uid == offer_worker_id else caller_role)
+
+        # Only recipient can accept an offer (cannot accept own offer)
+        if caller_party == offer_by:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot accept your own offer. Waiting for the other party to accept."
+            )
+
+        # 1. Update this offer to accepted
+        updated_offer = db.update_document("offers", offer_id, {"status": "accepted"})
+
+        # 2. Update job status to 'accepted', set acceptedWorkerId and finalPrice
+        worker_id = offer.get("workerId")
+        final_price = float(offer.get("price"))
+        db.update_document("jobs", job_id, {
+            "status": "accepted",
+            "acceptedWorkerId": worker_id,
+            "finalPrice": final_price
+        })
+
+        # 3. Auto-reject all other pending offers on this job
+        all_job_offers = db.query_collection("offers", {"jobId": job_id})
+        for other in all_job_offers:
+            if other.get("id") != offer_id and other.get("status") == "pending":
+                db.update_document("offers", other.get("id"), {"status": "rejected"})
+
+        return updated_offer
 
 
 def reject_offer(
@@ -256,7 +304,7 @@ def reject_offer(
     if offer.get("status") != "pending":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot reject offer: status is '{offer.get('status')}'"
+            detail=f"Cannot reject offer with status '{offer.get('status')}'"
         )
 
     job_id = offer.get("jobId")

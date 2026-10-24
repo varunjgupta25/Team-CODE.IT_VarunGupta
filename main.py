@@ -1,4 +1,6 @@
-from fastapi import FastAPI, Request, status
+import logging
+from contextlib import asynccontextmanager
+from fastapi import APIRouter, FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,22 +14,26 @@ from routers.reports import router as reports_router
 from routers.admin import router as admin_router
 from routers.route import router as route_router
 
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    description="Hyperlocal On-Demand Blue-Collar Services API (RepairBuddy / KaamSetu)",
-    version="1.1.0"
-)
+logger = logging.getLogger(__name__)
 
 
-@app.on_event("startup")
-def _preload_graph():
-    """Pre-load the OSM graph at startup so the first request isn't slow."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler: Pre-load the OSM graph at startup."""
     try:
         from services.routing import load_graph
         load_graph()
     except Exception as exc:  # pragma: no cover
-        import logging
-        logging.getLogger(__name__).warning("startup: graph preload failed: %s", exc)
+        logger.warning("startup: graph preload failed: %s", exc)
+    yield
+
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="Hyperlocal On-Demand Blue-Collar Services API (RepairBuddy)",
+    version="1.1.0",
+    lifespan=lifespan,
+)
 
 # CORS middleware for React frontend (localhost:5173)
 origins = [
@@ -48,6 +54,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Status code constant to avoid deprecation warnings across Starlette versions
+UNPROCESSABLE_CODE = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
+
 
 # Exception handler to format validation errors cleanly as {"detail": "..."}
 @app.exception_handler(RequestValidationError)
@@ -58,13 +67,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     msg = first_error.get("msg", "Invalid request body")
     detail_str = f"{loc}: {msg}" if loc else msg
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=UNPROCESSABLE_CODE,
         content={"detail": detail_str}
     )
 
 
-# Health check endpoint
-@app.get("/health", tags=["System"])
+# System health check router mounted on both "" and "/api"
+health_router = APIRouter(tags=["System"])
+
+
+@health_router.get("/health")
 def health_check():
     return {
         "status": "healthy",
@@ -76,6 +88,7 @@ def health_check():
 
 # Include routers both at root level and under /api for full specification compatibility
 for prefix in ["", "/api"]:
+    app.include_router(health_router, prefix=prefix)
     app.include_router(jobs_router, prefix=prefix)
     app.include_router(workers_router, prefix=prefix)
     app.include_router(offers_router, prefix=prefix)

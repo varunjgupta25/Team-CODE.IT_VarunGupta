@@ -51,7 +51,7 @@ def _h3_filter():
 _TOP_N_ROUTING = 5
 
 
-def match_workers_for_job(job_id: str) -> List[Dict[str, Any]]:
+def match_workers_for_job(job_id: str, requester: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """
     Implements the PRD Matching Service (Section 5.3) augmented with:
       - Stage B: H3 spatial pre-filter
@@ -63,6 +63,15 @@ def match_workers_for_job(job_id: str) -> List[Dict[str, Any]]:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job with ID '{job_id}' not found"
         )
+
+    if requester:
+        caller_role = requester.get("role", "customer")
+        caller_uid = requester.get("uid")
+        if caller_role != "admin" and job.get("customerId") != caller_uid:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: You do not have permission to view matches for another user's job"
+            )
 
     job_category = job.get("category", "").lower().strip()
     job_loc = job.get("location", {})

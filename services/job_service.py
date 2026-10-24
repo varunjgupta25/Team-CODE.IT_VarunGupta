@@ -182,36 +182,46 @@ def complete_job(job_id: str, worker_id: str) -> Dict[str, Any]:
     return updated
 
 
+
 def cancel_job(job_id: str, caller_uid: str, caller_role: str) -> Dict[str, Any]:
-    job = db.get_document("jobs", job_id)
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job with ID '{job_id}' not found"
-        )
+    with db._lock:
+        job = db.get_document("jobs", job_id)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID '{job_id}' not found"
+            )
 
-    current_status = job.get("status")
-    if current_status == "completed":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot cancel a job that has already been completed"
-        )
-    if current_status == "cancelled":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Job is already cancelled"
-        )
+        current_status = job.get("status")
+        if current_status == "completed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot cancel a job that has already been completed"
+            )
+        if current_status == "cancelled":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Job is already cancelled"
+            )
 
-    # Only customer of the job or admin can cancel
-    if caller_role != "admin" and job.get("customerId") != caller_uid:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the customer who created this job or an admin can cancel it"
-        )
+        # Only customer of the job or admin can cancel
+        if caller_role != "admin" and job.get("customerId") != caller_uid:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the customer who created this job or an admin can cancel it"
+            )
 
-    updated = db.update_document("jobs", job_id, {
-        "status": "cancelled",
-        "cancelledAt": datetime.now(timezone.utc).isoformat()
-    })
-    return updated
+        updated = db.update_document("jobs", job_id, {
+            "status": "cancelled",
+            "cancelledAt": datetime.now(timezone.utc).isoformat()
+        })
+
+        # Auto-reject any pending offers on this job
+        all_job_offers = db.query_collection("offers", {"jobId": job_id})
+        for off in all_job_offers:
+            if off.get("status") == "pending":
+                db.update_document("offers", off.get("id"), {"status": "rejected"})
+
+        return updated
+
 

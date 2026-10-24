@@ -1,5 +1,7 @@
 import os
 import sys
+import warnings
+warnings.filterwarnings("ignore")
 
 # Ensure UTF-8 output
 if hasattr(sys.stdout, "reconfigure"):

@@ -226,3 +226,103 @@ def test_matching_ranking_order_follows_score(client, auth_customer_headers):
 def test_matching_nonexistent_job_returns_404(client, auth_customer_headers):
     res = client.get("/workers/match?jobId=nonexistent_job_xyz", headers=auth_customer_headers)
     assert res.status_code == 404
+
+
+def test_matching_foreign_job_returns_403(client, auth_customer_2_headers):
+    """
+    Customer 2 attempting to view matches for Customer 1's job must receive 403 Forbidden.
+    """
+    res = client.get("/workers/match?jobId=job_test_open", headers=auth_customer_2_headers)
+    assert res.status_code == 403
+    assert "permission" in res.json()["detail"].lower() or "another user" in res.json()["detail"].lower()
+
+
+def test_matching_zero_matches_returns_empty_list(client, auth_customer_headers):
+    """
+    When no verified workers match the required skill/location, return [] with 200 OK (not 500 or error).
+    """
+    db.clear_collection("workers")
+    res = client.get("/workers/match?jobId=job_test_open", headers=auth_customer_headers)
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+def test_haversine_mumbai_city_pairs():
+    """
+    Haversine distance within 1% on known Mumbai city coordinate pairs.
+    """
+    # 1. Nariman Point (18.9256, 72.8242) to BKC (19.0657, 72.8687) ~ 16.24 km
+    d1 = haversine_distance(18.9256, 72.8242, 19.0657, 72.8687)
+    expected_d1 = 16.24
+    err1 = abs(d1 - expected_d1) / expected_d1
+    assert err1 < 0.01, f"Nariman Point to BKC error {err1:.4f} exceeds 1% (dist={d1})"
+
+    # 2. Borivali West (19.2307, 72.8567) to Mira Road (19.2813, 72.8688) ~ 5.77 km
+    d2 = haversine_distance(19.2307, 72.8567, 19.2813, 72.8688)
+    expected_d2 = 5.77
+    err2 = abs(d2 - expected_d2) / expected_d2
+    assert err2 < 0.01, f"Borivali to Mira Road error {err2:.4f} exceeds 1% (dist={d2})"
+
+
+def test_within30_exact_30_and_31_minutes():
+    """
+    within30 must be strictly True at 30.0 minutes and False at 31.0 minutes.
+    """
+    assert is_within_30_minutes(30.0) is True
+    assert is_within_30_minutes(30.0001) is False
+    assert is_within_30_minutes(31.0) is False
+    assert is_within_30_minutes(29.9) is True
+
+
+def test_matching_score_price_branches(client, auth_customer_headers):
+    """
+    Tests price scoring branches:
+    1. Worker rate higher than job budget.
+    2. Job with no budget specified (neutral 15.0 pts).
+    """
+    # 1. Job with tight budget of 300 (worker rate is 450)
+    db.set_document("jobs", "job_budget_300", {
+        "id": "job_budget_300",
+        "customerId": "cust_test_1",
+        "category": "electrician",
+        "description": "Budget test",
+        "location": {"lat": 19.2825, "lng": 72.8570, "address": "Mira Road"},
+        "budget": 300.0,
+        "status": "open"
+    })
+    res1 = client.get("/workers/match?jobId=job_budget_300", headers=auth_customer_headers)
+    assert res1.status_code == 200
+    assert len(res1.json()) > 0
+
+    # 2. Job with no budget
+    db.set_document("jobs", "job_no_budget", {
+        "id": "job_no_budget",
+        "customerId": "cust_test_1",
+        "category": "electrician",
+        "description": "No budget test",
+        "location": {"lat": 19.2825, "lng": 72.8570, "address": "Mira Road"},
+        "budget": None,
+        "status": "open"
+    })
+    res2 = client.get("/workers/match?jobId=job_no_budget", headers=auth_customer_headers)
+    assert res2.status_code == 200
+    assert len(res2.json()) > 0
+
+
+def test_matching_job_missing_coordinates_returns_400(client, auth_customer_headers):
+    """
+    Job without lat or lng coordinates returns 400 Bad Request.
+    """
+    db.set_document("jobs", "job_missing_coords", {
+        "id": "job_missing_coords",
+        "customerId": "cust_test_1",
+        "category": "electrician",
+        "description": "No coords",
+        "location": {"address": "Mira Road"},
+        "status": "open"
+    })
+    res = client.get("/workers/match?jobId=job_missing_coords", headers=auth_customer_headers)
+    assert res.status_code == 400
+    assert "coordinates" in res.json().get("detail", "").lower()
+
+
