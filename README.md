@@ -1,8 +1,9 @@
-# RepairBuddy  - Backend API
+# RepairBuddy
 
-> **"Blinkit for Blue-Collar Workers"** — Hyperlocal On-Demand Services Platform  
+> **"Blinkit for Blue-Collar Workers"** — Hyperlocal On-Demand Blue-Collar Services Platform  
+> **Author & Developer:** Varun jayshankar gupta ([@varunjgupta25](https://github.com/varunjgupta25))  
 > Built for VIT National Level Hackathon (Social Impact Domain)  
-> Stack: **FastAPI + Pydantic + Firebase Admin / Firestore**
+> Stack: **FastAPI (Backend) + React & Vite & Tailwind CSS (Frontend)**
 
 ---
 
