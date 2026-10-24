@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Environment variables / secrets
+.env
+*.env
+
+# Firebase credentials
+serviceAccountKey.json
+firebase_credentials.json
+firebase*.json
+
+# OSM graph cache (large binary – regenerate with scripts/build_graph.py)
+data/mira_bhayandar.graphml
+
+# In-memory store snapshot (test artefact)
+data/store.json
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
