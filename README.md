@@ -1,4 +1,4 @@
-# RepairBuddy (KaamSetu) - Backend API
+# RepairBuddy  - Backend API
 
 > **"Blinkit for Blue-Collar Workers"** — Hyperlocal On-Demand Services Platform  
 > Built for VIT National Level Hackathon (Social Impact Domain)  
