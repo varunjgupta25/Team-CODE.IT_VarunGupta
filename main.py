@@ -141,6 +141,17 @@ def health_check():
     }
 
 
+@health_router.get("/")
+def root_info():
+    return {
+        "service": settings.PROJECT_NAME,
+        "status": "online",
+        "documentation": "/docs",
+        "health": "/health",
+        "frontend": "https://team-code-it-varun-gupta.vercel.app"
+    }
+
+
 # Include routers both at root level and under /api for full specification compatibility
 for prefix in ["", "/api"]:
     app.include_router(health_router, prefix=prefix)
