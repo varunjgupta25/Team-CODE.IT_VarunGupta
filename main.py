@@ -19,7 +19,14 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan event handler: Pre-load the OSM graph at startup."""
+    """Lifespan event handler: Pre-load the OSM graph and auto-seed if empty."""
+    if settings.USE_MOCK_FIREBASE and getattr(settings, "AUTO_SEED", True):
+        try:
+            from seed import auto_seed_if_empty
+            auto_seed_if_empty()
+        except Exception as exc:  # pragma: no cover
+            logger.warning("startup: auto-seed failed: %s", exc)
+
     try:
         from services.routing import load_graph
         load_graph()
@@ -30,12 +37,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="Hyperlocal On-Demand Blue-Collar Services API (RepairBuddy)",
+    description="Repair Buddy",
     version="1.1.0",
     lifespan=lifespan,
 )
 
-# CORS middleware for React frontend (localhost:5173)
+# CORS middleware for React frontend (localhost:5173) and production / preview origins
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -46,12 +53,18 @@ if isinstance(settings.CORS_ORIGINS, list):
         if o not in origins:
             origins.append(o)
 
+cors_kwargs = {
+    "allow_origins": origins,
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+if getattr(settings, "CORS_ORIGIN_REGEX", None):
+    cors_kwargs["allow_origin_regex"] = settings.CORS_ORIGIN_REGEX
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **cors_kwargs,
 )
 
 # Status code constant to avoid deprecation warnings across Starlette versions

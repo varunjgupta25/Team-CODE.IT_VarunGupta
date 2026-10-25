@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: repair-buddy-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENV
+        value: production
+      - key: USE_MOCK_FIREBASE
+        value: "true"
+      - key: AUTO_SEED
+        value: "true"
+      - key: CORS_ORIGINS
+        value: http://localhost:5173,http://127.0.0.1:5173
+      - key: CORS_ORIGIN_REGEX
+        value: https://.*\.vercel\.app
+      - key: TRANSIT_SPEED_KMH
+        value: "25.0"

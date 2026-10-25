@@ -62,3 +62,13 @@ class AdminApproveResponse(BaseModel):
     workerId: str
     verified: bool = True
 
+
+class PendingVerificationWorker(BaseModel):
+    workerId: str
+    name: str
+    skills: List[str]
+    documentType: Optional[str] = None
+    documentNumberMasked: Optional[str] = None
+    requestedAt: Optional[str] = None
+
+

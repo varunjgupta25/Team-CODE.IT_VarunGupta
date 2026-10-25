@@ -1,5 +1,5 @@
 import os
-from typing import List, Union
+from typing import List, Optional, Union
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # CORS Configuration
     CORS_ORIGINS: Union[str, List[str]] = "http://localhost:5173,http://127.0.0.1:5173"
+    CORS_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -27,6 +28,9 @@ class Settings(BaseSettings):
         elif isinstance(v, list):
             return v
         return ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    # Auto-seed configuration on startup
+    AUTO_SEED: bool = True
 
     # Firebase Admin Configuration
     FIREBASE_CREDENTIALS_PATH: str = ""

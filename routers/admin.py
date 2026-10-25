@@ -8,6 +8,34 @@ from core.database import db
 router = APIRouter(tags=["Admin"])
 
 
+from models.worker import AdminApproveResponse, PendingVerificationWorker
+
+@router.get("/admin/verifications", response_model=List[PendingVerificationWorker])
+def api_get_verifications_queue(
+    current_user: Dict[str, Any] = Depends(require_role(["admin"]))
+) -> List[PendingVerificationWorker]:
+    """
+    Admin retrieves the verification queue of workers with verificationStatus == 'pending'.
+    Never returns full document numbers.
+    """
+    all_workers = db.list_collection("workers")
+    pending: List[PendingVerificationWorker] = []
+    for w in all_workers:
+        if w.get("verificationStatus") == "pending":
+            worker_id = w.get("uid") or w.get("workerId") or ""
+            pending.append(
+                PendingVerificationWorker(
+                    workerId=worker_id,
+                    name=w.get("name") or "Unknown Worker",
+                    skills=w.get("skills") or [],
+                    documentType=w.get("documentType"),
+                    documentNumberMasked=w.get("documentNumberMasked"),
+                    requestedAt=w.get("requestedAt")
+                )
+            )
+    return pending
+
+
 @router.get("/admin/verifications/pending")
 def api_get_pending_verifications(
     current_user: Dict[str, Any] = Depends(require_role(["admin"]))

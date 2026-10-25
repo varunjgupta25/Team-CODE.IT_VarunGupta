@@ -13,12 +13,13 @@ from core.database import db
 from services.trust import get_worker_trust_info
 
 
-def seed_database():
+def seed_database(clear_existing: bool = True):
     print("[INFO] Starting RepairBuddy Database Seeding...")
 
-    # Clear existing data for a clean slate
-    for collection in ["users", "workers", "jobs", "offers", "reviews", "sos_alerts", "reports"]:
-        db.clear_collection(collection)
+    # Clear existing data for a clean slate if requested
+    if clear_existing:
+        for collection in ["users", "workers", "jobs", "offers", "reviews", "sos_alerts", "reports"]:
+            db.clear_collection(collection)
 
     # 1. Seed 5 Customers + 1 Admin
     customers = [
@@ -605,6 +606,22 @@ def seed_database():
     print("[OK] Seeded initial pending offer for negotiation demo.")
 
     print("\n[DONE] Seeding complete! Database is populated and ready for demo.")
+
+
+def auto_seed_if_empty() -> bool:
+    """
+    Idempotent auto-seed check: if workers collection is empty and AUTO_SEED is enabled,
+    seeds workers, customers, jobs and admin_user without wiping existing data.
+    Controlled by AUTO_SEED env var.
+    """
+    from core.config import settings
+    if not getattr(settings, "AUTO_SEED", True):
+        return False
+    existing_workers = db.list_collection("workers")
+    if existing_workers:
+        return False
+    seed_database(clear_existing=False)
+    return True
 
 
 if __name__ == "__main__":

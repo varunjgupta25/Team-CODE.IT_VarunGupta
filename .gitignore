@@ -15,6 +15,8 @@ venv/
 .venv/
 env/
 .env/
+cache/
+.cache/
 
 # Environment variables / secrets
 .env
@@ -25,8 +27,8 @@ serviceAccountKey.json
 firebase_credentials.json
 firebase*.json
 
-# OSM graph cache (large binary – regenerate with scripts/build_graph.py)
-data/mira_bhayandar.graphml
+# OSM graph cache - committed for deployment and offline routing
+!data/mira_bhayandar.graphml
 
 # In-memory store snapshot (test artefact)
 data/store.json

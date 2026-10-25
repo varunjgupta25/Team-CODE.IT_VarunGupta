@@ -1,8 +1,11 @@
 import json
+import logging
 import os
 import threading
 from typing import Any, Dict, List, Optional
 from core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Attempt Firebase Admin imports
 try:
@@ -37,7 +40,11 @@ class FirestoreDB:
         self._firestore_client = None
         self._save_to_disk = True
 
-        os.makedirs(self._data_dir, exist_ok=True)
+        try:
+            os.makedirs(self._data_dir, exist_ok=True)
+        except Exception as exc:
+            logger.warning("Could not create data dir %s: %s. Continuing in memory.", self._data_dir, exc)
+
         self._load_local_store()
 
         if not self._use_mock and FIREBASE_AVAILABLE:
@@ -66,8 +73,8 @@ class FirestoreDB:
                         for col in self._mem_store:
                             if col in loaded:
                                 self._mem_store[col] = loaded[col]
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("Could not read local store file %s: %s. Continuing in memory.", self._store_file, exc)
 
     def _save_local_store(self):
         if self._use_mock and getattr(self, "_save_to_disk", True):
@@ -75,8 +82,8 @@ class FirestoreDB:
                 try:
                     with open(self._store_file, "w", encoding="utf-8") as f:
                         json.dump(self._mem_store, f, indent=2, default=str)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("Failed to save local store to %s (read-only filesystem?): %s. Continuing in memory.", self._store_file, exc)
 
     def get_document(self, collection: str, doc_id: str) -> Optional[Dict[str, Any]]:
         if not self._use_mock and self._firestore_client:

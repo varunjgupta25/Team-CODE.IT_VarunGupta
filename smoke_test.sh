@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# RepairBuddy / KaamSetu End-to-End Smoke Test Script
+# Repair Buddy End-to-End Smoke Test Script
 # Tests all endpoints on the live local FastAPI server (http://localhost:8000)
 # Usage:
 #   1. Start server: uvicorn main:app --reload --port 8000

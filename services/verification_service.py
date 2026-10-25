@@ -4,6 +4,8 @@ from core.database import db
 from models.worker import WorkerVerifyRequest
 
 
+from datetime import datetime, timezone
+
 def request_worker_verification(
     worker_id: str,
     req_data: WorkerVerifyRequest
@@ -15,9 +17,21 @@ def request_worker_verification(
             detail=f"Worker with ID '{worker_id}' not found"
         )
 
-    db.update_document("workers", worker_id, {
-        "verificationStatus": "pending"
-    })
+    doc_num = req_data.documentNumber
+    masked_doc = None
+    if doc_num:
+        clean = doc_num.strip()
+        last4 = clean[-4:] if len(clean) >= 4 else clean
+        masked_doc = f"•••• {last4}"
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updates = {
+        "verificationStatus": "pending",
+        "documentType": req_data.documentType or "aadhaar",
+        "documentNumberMasked": masked_doc,
+        "requestedAt": now_iso
+    }
+    db.update_document("workers", worker_id, updates)
 
     return {
         "status": "pending",

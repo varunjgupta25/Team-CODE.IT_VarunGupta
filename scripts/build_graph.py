@@ -25,23 +25,36 @@ except ImportError:
 
 CENTRE_LAT = 19.2813
 CENTRE_LNG = 72.8688
-RADIUS_M   = 12_000          # 12 km around centre
+RADIUS_M   = 6_000          # 6 km around centre (optimized for memory <350MB and file size <40MB)
 
 OUTPUT_DIR  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "mira_bhayandar.graphml")
 
 
+def prune_graph_attributes(G):
+    """
+    Remove unnecessary metadata tags from nodes and edges to keep GraphML
+    compact, load fast, and stay well under 40 MB / 350 MB RAM limits.
+    """
+    essential_node_attrs = {"x", "y"}
+    for _, data in G.nodes(data=True):
+        keys_to_remove = [k for k in data if k not in essential_node_attrs]
+        for k in keys_to_remove:
+            del data[k]
+
+    essential_edge_attrs = {"length", "travel_time", "speed_kph", "oneway"}
+    for _, _, _, data in G.edges(keys=True, data=True):
+        keys_to_remove = [k for k in data if k not in essential_edge_attrs]
+        for k in keys_to_remove:
+            del data[k]
+    return G
+
+
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    if os.path.exists(OUTPUT_FILE):
-        print(f"Graph already cached at {OUTPUT_FILE}")
-        print("Delete the file and re-run to refresh.")
-        return
-
     print(f"Downloading OSM drive network for Mira-Bhayandar "
           f"(centre={CENTRE_LAT},{CENTRE_LNG}, radius={RADIUS_M} m) …")
-    print("This may take 1–3 minutes depending on your internet connection.")
 
     G = ox.graph_from_point(
         (CENTRE_LAT, CENTRE_LNG),
@@ -54,13 +67,17 @@ def main():
     G = ox.add_edge_speeds(G)
     G = ox.add_edge_travel_times(G)
 
+    print("Pruning unneeded metadata attributes for compact size …")
+    G = prune_graph_attributes(G)
+
     print(f"Saving graph to {OUTPUT_FILE} …")
     ox.save_graphml(G, OUTPUT_FILE)
 
     nodes = G.number_of_nodes()
     edges = G.number_of_edges()
+    size_mb = os.path.getsize(OUTPUT_FILE) / (1024 * 1024)
     print(f"Done. Graph has {nodes} nodes and {edges} edges.")
-    print(f"Saved to: {OUTPUT_FILE}")
+    print(f"Saved to: {OUTPUT_FILE} ({size_mb:.2f} MB)")
 
 
 if __name__ == "__main__":

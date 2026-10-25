@@ -267,3 +267,43 @@ curl -X POST "http://localhost:8000/sos" \
    - **Gold:** $\ge 80$
    - **Silver:** $\ge 60$
    - **Bronze:** $\ge 40$
+
+---
+
+## 7. Deploy to Render
+
+Repair Buddy includes automated deployment configuration for [Render](https://render.com) (`render.yaml` Blueprint and `Procfile`).
+
+### Exact Deployment Steps
+
+1. **Push your code to GitHub**:
+   Ensure `data/mira_bhayandar.graphml`, `.python-version`, and `render.yaml` are committed.
+
+2. **Create New Blueprint / Web Service on Render**:
+   - Navigate to [Render Dashboard](https://dashboard.render.com).
+   - Click **New +** → **Blueprint** (or **Web Service**).
+   - Select your repository: `varunjgupta25/Team-CODE.IT_VarunGupta`.
+   - Render will automatically detect `render.yaml`. If setting up manually as a Web Service:
+     - **Runtime:** `Python` (pinned via `.python-version` to `3.11.9`)
+     - **Build Command:** `pip install -r requirements.txt`
+     - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
+     - **Health Check Path:** `/health`
+
+3. **Configure Environment Variables**:
+   In Render's **Environment** tab, configure the following variables:
+
+   | Variable | Value / Example | Description |
+   |---|---|---|
+   | `ENV` | `production` | Environment mode |
+   | `USE_MOCK_FIREBASE` | `true` | Runs in persistent mock Firestore mode (or provide `FIREBASE_CREDENTIALS_PATH` for live Firebase) |
+   | `AUTO_SEED` | `true` | Idempotently seeds 25 workers, 5 customers, 5 jobs, and `admin_user` on cold boot if database is empty |
+   | `CORS_ORIGINS` | `http://localhost:5173,https://repair-buddy.vercel.app` | Comma-separated list of exact allowed origins |
+   | `CORS_ORIGIN_REGEX` | `https://.*\.vercel\.app` | Optional regex to permit all Vercel PR preview deployments |
+   | `TRANSIT_SPEED_KMH` | `25.0` | Travel speed constant for ETA calculations |
+   | `PORT` | *(Provided by Render automatically)* | Port assigned dynamically by Render |
+
+4. **Verify Deployment**:
+   - The deployment runs in ~30–45s installing wheel dependencies.
+   - Render verifies the `/health` health check.
+   - On startup, `auto_seed_if_empty()` populates the database and `load_graph()` preloads the Mira-Bhayandar road network (~2.41 MB, <160 MB peak RAM).
+
