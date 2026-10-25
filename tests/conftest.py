@@ -13,7 +13,10 @@ def isolated_db():
     Ensures each test runs against a completely clean, isolated, in-memory Firestore.
     Disables saving to disk so no files on disk are touched during test runs.
     """
+    old_save_to_disk = db._save_to_disk
+    old_use_mock = db._use_mock
     db._save_to_disk = False
+    db._use_mock = True
 
     # Baseline seed data for tests
     baseline_users = {
@@ -176,6 +179,8 @@ def isolated_db():
     app.dependency_overrides.clear()
     yield
     app.dependency_overrides.clear()
+    db._save_to_disk = old_save_to_disk
+    db._use_mock = old_use_mock
 
 
 @pytest.fixture

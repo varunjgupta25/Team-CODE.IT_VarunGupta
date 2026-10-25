@@ -12,10 +12,25 @@ def request_worker_verification(
 ) -> Dict[str, Any]:
     worker = db.get_document("workers", worker_id)
     if not worker:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Worker with ID '{worker_id}' not found"
-        )
+        user_doc = db.get_document("users", worker_id) or {}
+        worker = {
+            "uid": worker_id,
+            "id": worker_id,
+            "name": user_doc.get("name", "Worker"),
+            "phone": user_doc.get("phone", ""),
+            "skills": user_doc.get("skills", ["plumber"]),
+            "rates": user_doc.get("rates", {"plumber": 350.0}),
+            "isAvailableNow": True,
+            "verified": False,
+            "verificationStatus": "unverified",
+            "rating": 4.5,
+            "jobsDone": 0,
+            "location": user_doc.get("location", {"lat": 19.2812, "lng": 72.8697}),
+            "serviceRadiusKm": 8.0,
+            "avatarUrl": "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80",
+            "about": "Service professional in Mira Road area."
+        }
+        db.set_document("workers", worker_id, worker)
 
     doc_num = req_data.documentNumber
     masked_doc = None

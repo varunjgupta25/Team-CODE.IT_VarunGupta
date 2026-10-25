@@ -1,13 +1,34 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+// Resolve and sanitize backend API Base URL
+let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://repair-buddy.onrender.com/api';
+
+if (typeof rawBaseUrl === 'string') {
+  // Strip any accidental wrapping quotes
+  rawBaseUrl = rawBaseUrl.trim().replace(/^["']|["']$/g, '');
+  // If the placeholder <your-render-service> was left unchanged in Vercel, replace it with repair-buddy
+  if (rawBaseUrl.includes('<your-render-service>') || rawBaseUrl.includes('<') || rawBaseUrl.includes('your-render-service')) {
+    rawBaseUrl = rawBaseUrl
+      .replace(/<your-render-service>/g, 'repair-buddy')
+      .replace(/your-render-service/g, 'repair-buddy')
+      .replace(/<[^>]+>/g, 'repair-buddy');
+  }
+  // Ensure protocol
+  if (!rawBaseUrl.startsWith('http://') && !rawBaseUrl.startsWith('https://')) {
+    rawBaseUrl = `https://${rawBaseUrl}`;
+  }
+  // Ensure /api suffix
+  if (!rawBaseUrl.endsWith('/api')) {
+    rawBaseUrl = `${rawBaseUrl.replace(/\/+$/, '')}/api`;
+  }
+}
 
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: rawBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  timeout: 15000,
 });
 
 // Attach Firebase ID token if present
