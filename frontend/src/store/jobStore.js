@@ -49,7 +49,7 @@ export const useJobStore = create((set, get) => ({
       const workers = await api.getMatchedWorkers(jobId);
       set({ matchedWorkers: workers, isMatchingLoading: false });
       return workers;
-    } catch (err) {
+    } catch {
       set({ isMatchingLoading: false });
       useToastStore.getState().error('Could not match workers at this time');
       return [];

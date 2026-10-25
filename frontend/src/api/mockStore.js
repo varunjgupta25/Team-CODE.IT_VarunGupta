@@ -1,4 +1,4 @@
-import { SEED_WORKERS, INITIAL_CUSTOMER } from './mockData';
+import { SEED_WORKERS } from './mockData';
 import { JOB_STATUS, OFFER_STATUS } from '../types';
 import { calcDistanceKm, calcEtaMinutes, computeTrust } from '../lib/utils';
 import { storage } from '../lib/storage';
@@ -59,10 +59,16 @@ export const mockStore = {
     return getWorkers();
   },
 
+  async getWorker(uid) {
+    await delay(100);
+    const workers = getWorkers();
+    return workers.find((w) => w.uid === uid || (uid === 'worker_plumber_unverified' && w.uid === 'w_plumb_unverified')) || null;
+  },
+
   async updateWorker(uid, updates) {
     await delay(100);
     const workers = getWorkers();
-    const index = workers.findIndex((w) => w.uid === uid);
+    const index = workers.findIndex((w) => w.uid === uid || (uid === 'worker_plumber_unverified' && w.uid === 'w_plumb_unverified'));
     if (index !== -1) {
       workers[index] = { ...workers[index], ...updates };
       saveWorkers(workers);
@@ -436,5 +442,102 @@ export const mockStore = {
     }
 
     return { success: true, reportId: rep.id };
+  },
+
+  // POST /workers/verify
+  async verifyWorker(_payload) {
+    await delay(150);
+    const sessionUser = storage.get('rb_auth_user_session', null);
+    const workerUid = sessionUser?.uid || 'w_plumb_unverified';
+    const workers = getWorkers();
+    const worker = workers.find((w) => w.uid === workerUid || (workerUid === 'worker_plumber_unverified' && w.uid === 'w_plumb_unverified'));
+    if (worker) {
+      worker.verificationStatus = 'pending';
+      saveWorkers(workers);
+    }
+    if (sessionUser && sessionUser.uid === workerUid) {
+      sessionUser.verificationStatus = 'pending';
+      storage.set('rb_auth_user_session', sessionUser);
+    }
+    return {
+      status: 'pending',
+      workerId: workerUid,
+      message: 'Verification request submitted successfully',
+    };
+  },
+
+  // POST /admin/verifications/{uid}/approve
+  async approveWorkerVerification(workerUid) {
+    await delay(150);
+    const workers = getWorkers();
+    const worker = workers.find((w) => w.uid === workerUid || (workerUid === 'worker_plumber_unverified' && w.uid === 'w_plumb_unverified') || (workerUid === 'w_plumb_unverified' && w.uid === 'worker_plumber_unverified'));
+    if (!worker) {
+      throw new Error(`Worker with UID '${workerUid}' not found`);
+    }
+
+    worker.verified = true;
+    worker.verificationStatus = 'approved';
+    worker.trustScore = Math.min(100, (worker.trustScore || 60) + 30);
+    worker.trustBadge = worker.trustScore >= 90 ? 'Gold' : 'Silver';
+    saveWorkers(workers);
+
+    const sessionUser = storage.get('rb_auth_user_session', null);
+    if (sessionUser && (sessionUser.uid === worker.uid || sessionUser.uid === workerUid)) {
+      sessionUser.verified = true;
+      sessionUser.verificationStatus = 'approved';
+      sessionUser.trustScore = worker.trustScore;
+      sessionUser.trustBadge = worker.trustBadge;
+      storage.set('rb_auth_user_session', sessionUser);
+    }
+
+    return {
+      status: 'approved',
+      workerId: workerUid,
+      verified: true,
+    };
+  },
+
+  // Admin pending verifications list helper
+  async getPendingVerifications() {
+    await delay(100);
+    const workers = getWorkers();
+    return workers.filter((w) => !w.verified || w.verificationStatus === 'pending');
+  },
+
+  // GET /route?jobId=&workerId=
+  async getRoute(jobId, workerId) {
+    await delay(150);
+    const jobs = getJobs();
+    const job = jobs.find((j) => j.id === jobId);
+    const workers = getWorkers();
+    const worker = workers.find((w) => w.uid === workerId || (workerId === 'worker_plumber_unverified' && w.uid === 'w_plumb_unverified'));
+
+    const startLat = worker?.location?.lat || 19.2812;
+    const startLng = worker?.location?.lng || 72.8697;
+    const endLat = job?.location?.lat || 19.2825;
+    const endLng = job?.location?.lng || 72.8570;
+
+    const distanceKm = calcDistanceKm(startLat, startLng, endLat, endLng);
+    const etaMinutes = calcEtaMinutes(distanceKm);
+
+    // Compute synthetic 5-step polyline simulating road curves between coordinates
+    const steps = 4;
+    const polyline = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      // deterministic curve jitter
+      const jitterLat = (i > 0 && i < steps) ? Math.sin(i * 1.5) * 0.0012 : 0;
+      const jitterLng = (i > 0 && i < steps) ? Math.cos(i * 1.5) * 0.0012 : 0;
+      polyline.push([
+        Number((startLat + t * (endLat - startLat) + jitterLat).toFixed(6)),
+        Number((startLng + t * (endLng - startLng) + jitterLng).toFixed(6)),
+      ]);
+    }
+
+    return {
+      distanceKm: Math.round(distanceKm * 10) / 10,
+      etaMinutes: Math.round(etaMinutes),
+      polyline,
+    };
   },
 };

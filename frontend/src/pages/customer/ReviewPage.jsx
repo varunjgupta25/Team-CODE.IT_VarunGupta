@@ -33,7 +33,7 @@ export function ReviewPage() {
       });
       setIsSubmitted(true);
       useToastStore.getState().success('Review submitted! Worker rating updated.');
-    } catch (err) {
+    } catch {
       useToastStore.getState().error('Failed to submit review');
     } finally {
       setIsSubmitting(false);

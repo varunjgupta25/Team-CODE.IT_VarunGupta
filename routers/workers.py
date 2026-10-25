@@ -129,16 +129,16 @@ def api_register_worker(payload: WorkerRegisterRequest):
         "skills": [s.lower().strip() for s in payload.skills],
         "rates": payload.rates,
         "isAvailableNow": True,
-        "verified": True,
-        "verificationStatus": "verified",
+        "verified": False,
+        "verificationStatus": "unverified",
         "rating": 5.0,
         "jobsDone": 0,
         "location": worker_loc,
         "serviceRadiusKm": payload.serviceRadiusKm or 10.0,
         "avatarUrl": payload.avatarUrl or "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80",
         "about": payload.about or f"Certified {payload.skills[0]} provider in Mira Road.",
-        "trustScore": 90.0,
-        "trustBadge": "Gold",
+        "trustScore": 60.0,
+        "trustBadge": "Bronze",
     }
 
     db.set_document("workers", worker_uid, new_worker)

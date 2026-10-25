@@ -6,7 +6,6 @@ import { storage } from '../../lib/storage';
 import { JOB_STATUS } from '../../types';
 import {
   Award,
-  TrendingUp,
   ShieldCheck,
   Star,
   CheckCircle2,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Flag, X, AlertTriangle } from 'lucide-react';
+import { Flag, X } from 'lucide-react';
 import { useJobStore } from '../../store/jobStore';
 
 const REPORT_REASONS = [

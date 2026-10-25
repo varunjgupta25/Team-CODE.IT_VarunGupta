@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useJobStore } from '../../store/jobStore';
 import { useAuthStore } from '../../store/authStore';
 import { CATEGORIES, DEFAULT_COORDINATES } from '../../types';
 import { MapPicker } from '../../components/map/MapPicker';
-import { ArrowLeft, Clock, Calendar, Sparkles, MapPin, IndianRupee, ShieldCheck } from 'lucide-react';
-import { formatCurrency } from '../../lib/utils';
+import { ArrowLeft, Clock, Calendar, Sparkles } from 'lucide-react';
 
 export function CreateJobPage() {
   const navigate = useNavigate();
@@ -25,10 +24,6 @@ export function CreateJobPage() {
   const [location, setLocation] = useState(DEFAULT_COORDINATES);
   const [address, setAddress] = useState('B-402, Shanti Park, Mira Road East, Mumbai');
 
-  useEffect(() => {
-    if (user?.name && !customerName) setCustomerName(user.name);
-    if (user?.phone && !customerPhone) setCustomerPhone(user.phone);
-  }, [user]);
 
   const selectedCategoryObj = CATEGORIES.find((c) => c.id === category) || CATEGORIES[0];
 

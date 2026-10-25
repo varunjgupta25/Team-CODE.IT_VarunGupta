@@ -11,6 +11,7 @@ import { WorkerJobDetailsPage } from './pages/worker/WorkerJobDetailsPage';
 import { WorkerEarningsPage } from './pages/worker/WorkerEarningsPage';
 import { AuthPage } from './pages/AuthPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { AdminPage } from './pages/admin/AdminPage';
 import { useAuthStore } from './store/authStore';
 import { ROLES } from './types';
 
@@ -18,6 +19,7 @@ import { ROLES } from './types';
 function LoginRoute() {
   const { user, role } = useAuthStore();
   if (user) {
+    if (role === ROLES.ADMIN) return <Navigate to="/admin" replace />;
     return <Navigate to={role === ROLES.WORKER ? '/worker' : '/'} replace />;
   }
   return <AuthPage />;
@@ -35,6 +37,7 @@ function RequireRole({ role: requiredRole, children }) {
 
   if (requiredRole && role !== requiredRole) {
     // Wrong role → send to their home
+    if (role === ROLES.ADMIN) return <Navigate to="/admin" replace />;
     return <Navigate to={role === ROLES.WORKER ? '/worker' : '/'} replace />;
   }
 
@@ -123,6 +126,16 @@ export default function App() {
             element={
               <RequireRole role={ROLES.WORKER}>
                 <WorkerEarningsPage />
+              </RequireRole>
+            }
+          />
+
+          {/* ── Admin-only ───────────────────────────────────── */}
+          <Route
+            path="/admin"
+            element={
+              <RequireRole role={ROLES.ADMIN}>
+                <AdminPage />
               </RequireRole>
             }
           />

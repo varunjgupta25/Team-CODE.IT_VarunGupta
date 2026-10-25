@@ -6,14 +6,12 @@ import { formatCurrency, formatTimeAgo } from '../../lib/utils';
 import { SosButton } from '../../components/common/SosButton';
 import { ReportModal } from '../../components/common/ReportModal';
 import { EmptyState } from '../../components/common/EmptyState';
+import { RouteMap } from '../../components/map/RouteMap';
 import {
   Clock,
   CheckCircle2,
-  AlertCircle,
   Phone,
-  ShieldCheck,
   Flag,
-  ArrowRight,
   TrendingUp,
   MapPin,
   RefreshCw,
@@ -36,9 +34,7 @@ export function JobStatusPage() {
   const navigate = useNavigate();
   const {
     currentJob,
-    fetchJob,
     offers,
-    fetchOffers,
     acceptOffer,
     counterOffer,
     rejectOffer,
@@ -50,6 +46,7 @@ export function JobStatusPage() {
   const [activeCounterOfferId, setActiveCounterOfferId] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [workerDetails, setWorkerDetails] = useState(null);
 
   const activeJobId = routeJobId || currentJob?.id;
 
@@ -61,22 +58,9 @@ export function JobStatusPage() {
     return () => {
       stopPolling();
     };
-  }, [activeJobId]);
-
-  if (!currentJob && !activeJobId) {
-    return (
-      <EmptyState
-        title="No active job found"
-        description="You don't have any ongoing job requests. Pick a service to get started."
-        actionLabel="Book a Service"
-        onAction={() => navigate('/')}
-      />
-    );
-  }
+  }, [activeJobId, startPolling, stopPolling]);
 
   const job = currentJob || { id: activeJobId, status: JOB_STATUS.OPEN, category: 'Service' };
-
-  const [workerDetails, setWorkerDetails] = useState(null);
   const assignedWorkerId =
     job.acceptedWorkerId ||
     (offers.length > 0 ? offers[offers.length - 1]?.workerId : null);
@@ -91,6 +75,17 @@ export function JobStatusPage() {
     }
   }, [assignedWorkerId]);
 
+  if (!currentJob && !activeJobId) {
+    return (
+      <EmptyState
+        title="No active job found"
+        description="You don't have any ongoing job requests. Pick a service to get started."
+        actionLabel="Book a Service"
+        onAction={() => navigate('/')}
+      />
+    );
+  }
+
   const allWorkers = storage.get('rb_mock_workers_v1', []) || [];
   const matchedWorkerObj = workerDetails || allWorkers.find((w) => w.uid === assignedWorkerId);
   const assignedWorker = matchedWorkerObj || (assignedWorkerId ? {
@@ -99,12 +94,12 @@ export function JobStatusPage() {
     phone: '',
     rating: 5.0,
     jobsDone: 0,
-    avatarUrl: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80'
+    avatarUrl: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80',
+    location: { lat: 19.2812, lng: 72.8697 },
   } : null);
 
   const currentStepIdx = STATUS_STEPS.findIndex((s) => s.key === job.status);
   const latestOffer = offers.length > 0 ? offers[offers.length - 1] : null;
-  const isPendingWorkerOffer = latestOffer && latestOffer.status === OFFER_STATUS.PENDING && latestOffer.by === 'worker';
   const isPendingCustomerOffer = latestOffer && latestOffer.status === OFFER_STATUS.PENDING && latestOffer.by === 'customer';
 
   // Handle Accept
@@ -255,6 +250,17 @@ export function JobStatusPage() {
             >
               <Flag className="w-3 h-3" /> Report
             </button>
+          </div>
+
+          {/* Road Network Route Map with Live Polling */}
+          <div className="pt-2">
+            <RouteMap
+              jobId={job.id}
+              workerId={assignedWorker.uid}
+              workerLocation={assignedWorker.location}
+              customerLocation={job.location}
+              height="220px"
+            />
           </div>
         </div>
       )}

@@ -150,7 +150,7 @@ def seed_database():
             "rates": {"plumber": 250.0},
             "isAvailableNow": True,
             "verified": False,
-            "verificationStatus": "pending",
+            "verificationStatus": "unverified",
             "rating": 3.8,
             "jobsDone": 2,
             "location": {"lat": 19.2820, "lng": 72.8575},

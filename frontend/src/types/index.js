@@ -16,6 +16,14 @@ export const OFFER_STATUS = {
 export const ROLES = {
   CUSTOMER: 'customer',
   WORKER: 'worker',
+  ADMIN: 'admin',
+};
+
+export const VERIFICATION_STATUS = {
+  UNVERIFIED: 'unverified',
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
 };
 
 export const CATEGORIES = [

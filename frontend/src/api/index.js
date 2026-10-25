@@ -82,10 +82,30 @@ export const api = {
     return apiClient.post('/reports', payload);
   },
 
-  // Worker Profile Updates
+  // Worker Profile Updates & Verification
   async getWorker(workerId) {
-    if (isMock) return null;
+    if (isMock) return mockStore.getWorker(workerId);
     return apiClient.get(`/workers/${workerId}`);
+  },
+
+  async verifyWorker(payload) {
+    if (isMock) return mockStore.verifyWorker(payload);
+    return apiClient.post('/workers/verify', payload);
+  },
+
+  async approveWorkerVerification(workerUid) {
+    if (isMock) return mockStore.approveWorkerVerification(workerUid);
+    return apiClient.post(`/admin/verifications/${workerUid}/approve`);
+  },
+
+  async getPendingVerifications() {
+    if (isMock) return mockStore.getPendingVerifications();
+    try {
+      const res = await apiClient.get('/admin/verifications/pending');
+      return Array.isArray(res) ? res : (res?.data || []);
+    } catch {
+      return [];
+    }
   },
 
   async registerWorker(payload) {
@@ -101,6 +121,12 @@ export const api = {
   async updateWorkerAvailability(workerId, isAvailable) {
     if (isMock) return mockStore.updateWorker(workerId, { isAvailableNow: isAvailable });
     return apiClient.patch(`/workers/${workerId}`, { isAvailableNow: isAvailable });
+  },
+
+  // Routes
+  async getRoute(jobId, workerId) {
+    if (isMock) return mockStore.getRoute(jobId, workerId);
+    return apiClient.get('/route', { params: { jobId, workerId } });
   },
 
   // Reset helper for testing demo resets

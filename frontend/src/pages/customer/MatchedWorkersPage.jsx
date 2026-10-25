@@ -10,15 +10,11 @@ import {
   Star,
   MapPin,
   Clock,
-  Sparkles,
   ArrowLeft,
-  Briefcase,
   Zap,
-  Phone,
   Check,
   X,
 } from 'lucide-react';
-import { useToastStore } from '../../store/toastStore';
 
 export function MatchedWorkersPage() {
   const { jobId } = useParams();
@@ -41,7 +37,7 @@ export function MatchedWorkersPage() {
       fetchJob(jobId);
       fetchMatchedWorkers(jobId);
     }
-  }, [jobId]);
+  }, [jobId, fetchJob, fetchMatchedWorkers]);
 
   const handleBookListedRate = async (worker) => {
     setIsSubmittingOffer(true);

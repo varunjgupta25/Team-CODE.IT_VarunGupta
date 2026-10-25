@@ -59,24 +59,30 @@ export const useAuthStore = create((set, get) => ({
 
   // Login as Worker (Strict role enforcement, dynamic registration)
   loginAsWorker: async (workerData) => {
-    const workerUid = workerData?.uid || `worker_${Date.now()}`;
+    // If specific UID passed (e.g. from quick login or existing worker), use it;
+    // otherwise generate a unique UID for dynamically registered worker
+    const isExplicitlyVerified = workerData?.verified === true || workerData?.uid === 'worker_plumber_1' || workerData?.uid === 'w_plumb_1';
+    const isNewRegistration = !workerData?.uid;
+    const workerUid = workerData?.uid || (isExplicitlyVerified ? 'worker_plumber_1' : `worker_${Date.now()}`);
     const skills = workerData?.skills && workerData.skills.length > 0 ? workerData.skills : ['plumber'];
     const rates = workerData?.rates || { [skills[0]]: 350 };
+    const isVerified = isExplicitlyVerified;
+    const vStatus = isVerified ? 'approved' : (workerData?.verificationStatus || 'unverified');
 
     const workerUser = {
       uid: workerUid,
-      name: workerData?.name || 'Worker',
-      phone: workerData?.phone || '',
+      name: workerData?.name || (isVerified ? 'Ramesh Kumar (Verified)' : 'Worker'),
+      phone: workerData?.phone || (isVerified ? '+91 91101 00001' : '+91 91101 00005'),
       skills,
       rates,
       role: ROLES.WORKER,
       isAvailableNow: true,
-      verified: true,
-      verificationStatus: 'verified',
-      rating: 5.0,
-      jobsDone: 0,
-      trustScore: 90.0,
-      trustBadge: 'Gold',
+      verified: isVerified,
+      verificationStatus: vStatus,
+      rating: workerData?.rating ?? 4.5,
+      jobsDone: workerData?.jobsDone ?? 0,
+      trustScore: isVerified ? 90.0 : 60.0,
+      trustBadge: isVerified ? 'Gold' : 'Bronze',
       avatarUrl: workerData?.avatarUrl || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80',
       location: workerData?.location || {
         lat: 19.2812,
@@ -89,19 +95,34 @@ export const useAuthStore = create((set, get) => ({
     storage.set(AUTH_USER_KEY, workerUser);
     localStorage.setItem('rb_auth_token', `token-worker-${workerUser.uid}`);
 
-    // Dynamic backend registration
-    try {
-      await api.registerWorker({
-        uid: workerUser.uid,
-        name: workerUser.name,
-        phone: workerUser.phone,
-        skills: workerUser.skills,
-        rates: workerUser.rates,
-        location: workerUser.location,
-        avatarUrl: workerUser.avatarUrl,
-      });
-    } catch (err) {
-      console.warn('Worker sync to backend:', err);
+    // If dynamically registering a new worker, register with backend
+    if (isNewRegistration) {
+      try {
+        await api.registerWorker({
+          uid: workerUser.uid,
+          name: workerUser.name,
+          phone: workerUser.phone,
+          skills: workerUser.skills,
+          rates: workerUser.rates,
+          location: workerUser.location,
+        });
+      } catch (err) {
+        console.warn('Worker sync to backend:', err);
+      }
+    } else {
+      // Fetch fresh profile from backend if existing worker
+      try {
+        const existing = await api.getWorker(workerUser.uid);
+        if (existing) {
+          workerUser.verified = Boolean(existing.verified);
+          workerUser.verificationStatus = existing.verificationStatus || (existing.verified ? 'approved' : 'unverified');
+          if (existing.trustScore !== undefined) workerUser.trustScore = existing.trustScore;
+          if (existing.trustBadge) workerUser.trustBadge = existing.trustBadge;
+          storage.set(AUTH_USER_KEY, workerUser);
+        }
+      } catch {
+        // Offline fallback
+      }
     }
 
     set({
@@ -112,6 +133,65 @@ export const useAuthStore = create((set, get) => ({
       generatedOtp: null,
     });
     return workerUser;
+  },
+
+  // Login as Admin
+  loginAsAdmin: () => {
+    const adminUser = {
+      uid: 'admin_user',
+      name: 'Super Admin',
+      phone: '+91 99999 00000',
+      role: ROLES.ADMIN,
+      avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+    };
+
+    storage.set(AUTH_ROLE_KEY, ROLES.ADMIN);
+    storage.set(AUTH_USER_KEY, adminUser);
+    localStorage.setItem('rb_auth_token', 'token-admin-admin_user');
+
+    set({
+      user: adminUser,
+      role: ROLES.ADMIN,
+      isAvailableNow: false,
+      pendingOtpPhone: null,
+      generatedOtp: null,
+    });
+    return adminUser;
+  },
+
+  // Update current user in store & storage
+  updateUser: (updates) => {
+    const current = get().user;
+    if (!current) return;
+    const updated = { ...current, ...updates };
+    storage.set(AUTH_USER_KEY, updated);
+    set({ user: updated });
+    return updated;
+  },
+
+  // Refresh worker profile (verification status, rating, etc.)
+  refreshWorkerProfile: async () => {
+    const { user, role } = get();
+    if (role !== ROLES.WORKER || !user?.uid) return;
+    try {
+      const fresh = await api.getWorker(user.uid);
+      if (fresh) {
+        const updated = {
+          ...user,
+          verified: fresh.verified ?? user.verified,
+          verificationStatus: fresh.verificationStatus ?? user.verificationStatus,
+          rating: fresh.rating ?? user.rating,
+          jobsDone: fresh.jobsDone ?? user.jobsDone,
+          trustScore: fresh.trustScore ?? user.trustScore,
+          trustBadge: fresh.trustBadge ?? user.trustBadge,
+        };
+        storage.set(AUTH_USER_KEY, updated);
+        set({ user: updated });
+        return updated;
+      }
+    } catch {
+      // Ignore background refresh failure
+    }
   },
 
   // Fake OTP generation system for phone login

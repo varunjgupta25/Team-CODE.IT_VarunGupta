@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Award, Info, X } from 'lucide-react';
+import { ShieldCheck, Award, X } from 'lucide-react';
 
-export function TrustBadge({ score = 85, tier = 'Gold', showDetails = false }) {
+export function TrustBadge({ score = 85, tier = 'Gold', showDetails: _showDetails = false }) {
   const [openModal, setOpenModal] = useState(false);
 
   let badgeColor = 'bg-amber-50 text-amber-800 border-amber-300';

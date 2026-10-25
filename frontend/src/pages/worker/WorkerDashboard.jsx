@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useJobStore } from '../../store/jobStore';
 import { TrustBadge } from '../../components/common/TrustBadge';
 import { EmptyState } from '../../components/common/EmptyState';
+import { VerificationCard } from '../../components/worker/VerificationCard';
 import { formatCurrency, computeTrust } from '../../lib/utils';
 import {
   Power,
@@ -11,8 +12,6 @@ import {
   Star,
   MapPin,
   Clock,
-  Sparkles,
-  TrendingUp,
   Zap,
   ChevronRight,
   Briefcase,
@@ -22,9 +21,12 @@ import {
 export function WorkerDashboard() {
   const navigate = useNavigate();
   const { user, isAvailableNow, toggleAvailability } = useAuthStore();
-  const { nearbyJobs, fetchNearbyJobs, isLoading } = useJobStore();
+  const { nearbyJobs, fetchNearbyJobs } = useJobStore();
 
-  const workerCoords = user?.location || { lat: 19.2812, lng: 72.8697 };
+  const workerCoords = useMemo(
+    () => user?.location || { lat: 19.2812, lng: 72.8697 },
+    [user?.location]
+  );
   const trust = user ? computeTrust(user) : { score: 85, tier: 'Silver' };
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export function WorkerDashboard() {
       fetchNearbyJobs(workerCoords);
     }, 5000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [fetchNearbyJobs, workerCoords]);
 
   return (
     <div className="space-y-4 pt-1">
@@ -119,6 +121,9 @@ export function WorkerDashboard() {
           </p>
         </div>
       )}
+
+      {/* Worker ID Verification Card */}
+      <VerificationCard />
 
       {/* Nearby Jobs Feed */}
       <div className="space-y-3">

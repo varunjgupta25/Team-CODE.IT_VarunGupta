@@ -3,15 +3,12 @@ import { useAuthStore } from '../store/authStore';
 import { ROLES } from '../types';
 import { computeTrust, formatCurrency } from '../lib/utils';
 import { TrustBadge } from '../components/common/TrustBadge';
+import { VerificationCard } from '../components/worker/VerificationCard';
 import {
-  User,
   Phone,
   MapPin,
   ShieldCheck,
-  Briefcase,
   LogOut,
-  Star,
-  Award,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToastStore } from '../store/toastStore';
@@ -103,11 +100,15 @@ export function ProfilePage() {
           )}
         </div>
 
-        {/* Security & Verification status */}
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center gap-2.5 text-xs text-emerald-900">
-          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>Identity Verified • Government ID Approved</span>
-        </div>
+        {/* Worker Verification Card or Customer Verified notice */}
+        {!isCustomer ? (
+          <VerificationCard />
+        ) : (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center gap-2.5 text-xs text-emerald-900">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Customer Verified • OTP Verified Account</span>
+          </div>
+        )}
 
         {/* Log Out Button */}
         <button

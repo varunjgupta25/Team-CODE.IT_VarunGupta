@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertOctagon, PhoneCall, ShieldAlert, X } from 'lucide-react';
+import { AlertOctagon, PhoneCall, ShieldAlert } from 'lucide-react';
 import { useJobStore } from '../../store/jobStore';
 
 export function SosButton({ jobId, jobLocation }) {

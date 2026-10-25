@@ -9,8 +9,8 @@ export function BottomNav() {
   const { role, user } = useAuthStore();
   const { currentJob } = useJobStore();
 
-  if (!user || !role) {
-    return null; // Don't show navigation tabs if not logged in
+  if (!user || !role || role === ROLES.ADMIN) {
+    return null; // Don't show navigation tabs if not logged in or admin
   }
 
   const isCustomer = role === ROLES.CUSTOMER;

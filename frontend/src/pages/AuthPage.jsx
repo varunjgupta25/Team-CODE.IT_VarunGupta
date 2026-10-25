@@ -4,13 +4,8 @@ import { ROLES, CATEGORIES } from '../types';
 import {
   User,
   Briefcase,
-  Phone,
   ShieldCheck,
-  CheckCircle2,
-  Lock,
   ArrowRight,
-  Sparkles,
-  KeyRound,
   RotateCcw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -18,7 +13,7 @@ import { useToastStore } from '../store/toastStore';
 import { api } from '../api';
 
 export function AuthPage() {
-  const { loginAsCustomer, loginAsWorker, sendOtp } = useAuthStore();
+  const { loginAsCustomer, loginAsWorker, loginAsAdmin, sendOtp } = useAuthStore();
   const navigate = useNavigate();
 
   // Active portal tab: 'customer' or 'worker'
@@ -79,12 +74,14 @@ export function AuthPage() {
         navigate('/');
       } else {
         loginAsWorker({
-          name: name.trim() || 'Worker',
+          name: name.trim() || 'Tradesman',
           phone: `+91 ${phone}`,
           skills: [selectedTrade],
           rates: { [selectedTrade]: Number(rate) },
+          verified: false,
+          verificationStatus: 'unverified',
         });
-        useToastStore.getState().success('Worker login successful!');
+        useToastStore.getState().success('Worker registered & logged in!');
         navigate('/worker');
       }
     }, 400);
@@ -276,17 +273,112 @@ export function AuthPage() {
             </div>
           </form>
         )}
+
+        {/* 1-Click Fast Testing Accounts */}
+        <div className="pt-3 border-t border-slate-100 space-y-2">
+          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+            Fast Testing Accounts
+          </p>
+          {activePortal === ROLES.WORKER ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  loginAsWorker({
+                    uid: 'worker_plumber_unverified',
+                    name: 'Kamlesh Verma',
+                    phone: '+91 91101 00005',
+                    verified: false,
+                    verificationStatus: 'unverified',
+                    skills: ['plumber'],
+                    rates: { plumber: 300 },
+                  });
+                  useToastStore.getState().info('Logged in as Unverified Worker');
+                  navigate('/worker');
+                }}
+                className="p-2.5 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-left transition"
+              >
+                <div className="flex items-center gap-1.5 text-amber-900 font-extrabold text-[11px]">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span>Unverified Worker</span>
+                </div>
+                <p className="text-[10px] text-amber-700 mt-0.5">Test Document Upload</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  loginAsWorker({
+                    uid: 'worker_plumber_1',
+                    name: 'Ramesh Kumar',
+                    phone: '+91 91101 00001',
+                    verified: true,
+                    verificationStatus: 'approved',
+                    skills: ['plumber'],
+                    rates: { plumber: 350 },
+                  });
+                  useToastStore.getState().success('Logged in as Verified Worker');
+                  navigate('/worker');
+                }}
+                className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-left transition"
+              >
+                <div className="flex items-center gap-1.5 text-emerald-900 font-extrabold text-[11px]">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>Verified Worker</span>
+                </div>
+                <p className="text-[10px] text-emerald-700 mt-0.5">Ramesh (Gold Badge)</p>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                loginAsCustomer({
+                  uid: 'cust_priya',
+                  name: 'Priya Sharma',
+                  phone: '+91 98200 11001',
+                });
+                useToastStore.getState().success('Logged in as Priya Sharma');
+                navigate('/');
+              }}
+              className="w-full p-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-left transition flex items-center justify-between"
+            >
+              <div>
+                <span className="font-extrabold text-blue-900 text-xs">Priya Sharma</span>
+                <p className="text-[10px] text-blue-700">Mira Road East • Customer</p>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200 text-blue-800">
+                1-Click Sign In
+              </span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Reset Mock DB */}
-      <div className="text-center pt-2">
-        <button
-          onClick={handleResetData}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-700 transition p-2"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Reset All Mock Data to Default</span>
-        </button>
+      <div className="text-center pt-2 space-y-1">
+        <div>
+          <button
+            onClick={handleResetData}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-700 transition p-1.5"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset All Mock Data to Default</span>
+          </button>
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => {
+              loginAsAdmin();
+              useToastStore.getState().success('Logged in as Administrator');
+              navigate('/admin');
+            }}
+            className="text-[11px] text-slate-400 hover:text-purple-600 underline font-medium transition py-1"
+          >
+            Administrator Console
+          </button>
+        </div>
       </div>
     </div>
   );

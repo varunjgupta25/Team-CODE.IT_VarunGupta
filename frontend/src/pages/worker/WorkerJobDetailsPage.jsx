@@ -6,18 +6,16 @@ import { JOB_STATUS, OFFER_STATUS } from '../../types';
 import { formatCurrency, formatTimeAgo } from '../../lib/utils';
 import { SosButton } from '../../components/common/SosButton';
 import { ReportModal } from '../../components/common/ReportModal';
+import { RouteMap } from '../../components/map/RouteMap';
 import {
   ArrowLeft,
   MapPin,
   Clock,
   Phone,
-  CheckCircle2,
-  AlertCircle,
   Play,
   Check,
   TrendingUp,
   Flag,
-  DollarSign,
   User,
 } from 'lucide-react';
 
@@ -27,9 +25,7 @@ export function WorkerJobDetailsPage() {
   const { user } = useAuthStore();
   const {
     currentJob,
-    fetchJob,
     offers,
-    fetchOffers,
     createOffer,
     counterOffer,
     acceptOffer,
@@ -54,13 +50,9 @@ export function WorkerJobDetailsPage() {
     return () => {
       stopPolling();
     };
-  }, [jobId]);
+  }, [jobId, startPolling, stopPolling]);
 
-  useEffect(() => {
-    if (user?.rates && job?.category && user.rates[job.category]) {
-      setQuotePrice(user.rates[job.category]);
-    }
-  }, [user, job?.category]);
+
   const latestOffer = offers.length > 0 ? offers[offers.length - 1] : null;
   const isCustomerPendingOffer = latestOffer && latestOffer.status === OFFER_STATUS.PENDING && latestOffer.by === 'customer';
 
@@ -199,35 +191,48 @@ export function WorkerJobDetailsPage() {
 
         {/* Customer phone & direct call if accepted/in-progress */}
         {[JOB_STATUS.ACCEPTED, JOB_STATUS.IN_PROGRESS].includes(job.status) && (
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-700">
-                <User className="w-4 h-4" />
+          <>
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-700">
+                  <User className="w-4 h-4" />
+                </div>
+                <div className="text-xs">
+                  <p className="font-bold text-slate-900">{job.customerName || 'Customer'}</p>
+                  <p className="text-slate-500 text-[10px]">{job.customerPhone || 'Phone not provided'}</p>
+                </div>
               </div>
-              <div className="text-xs">
-                <p className="font-bold text-slate-900">{job.customerName || 'Customer'}</p>
-                <p className="text-slate-500 text-[10px]">{job.customerPhone || 'Phone not provided'}</p>
+
+              <div className="flex items-center gap-2">
+                {job.customerPhone ? (
+                  <a
+                    href={`tel:${job.customerPhone}`}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-1 shadow-sm"
+                  >
+                    <Phone className="w-3.5 h-3.5" /> Call
+                  </a>
+                ) : null}
+                <button
+                  onClick={() => setShowReportModal(true)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-slate-100"
+                  title="Report Customer"
+                >
+                  <Flag className="w-4 h-4" />
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {job.customerPhone ? (
-                <a
-                  href={`tel:${job.customerPhone}`}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-1 shadow-sm"
-                >
-                  <Phone className="w-3.5 h-3.5" /> Call
-                </a>
-              ) : null}
-              <button
-                onClick={() => setShowReportModal(true)}
-                className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-slate-100"
-                title="Report Customer"
-              >
-                <Flag className="w-4 h-4" />
-              </button>
+            {/* Road Network Route to Customer (After acceptance) */}
+            <div className="pt-2">
+              <RouteMap
+                jobId={job.id}
+                workerId={user?.uid || job.acceptedWorkerId}
+                workerLocation={user?.location || { lat: 19.2812, lng: 72.8697 }}
+                customerLocation={job.location}
+                height="220px"
+              />
             </div>
-          </div>
+          </>
         )}
       </div>
 
