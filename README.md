@@ -9,88 +9,92 @@
 
 ## 1. Project Overview & Architecture
 
-RepairBuddy connects urban households to nearby verified skilled workers (plumbers, electricians, painters, cleaners, maids, cooks) in under 60 seconds with arrival ETAs under 30 minutes.
+Repair Buddy is a "Blinkit for blue-collar workers" hyper-local, on-demand service platform built for urban Indian households. It delivers sub-60-second worker matching and sub-30-minute arrival times for essential home services (electricians, plumbers, painters, cleaners, cooks, and carpenters).
+
+```mermaid
+graph TD
+    A[Customer Posts Job<br/>Category, Lat/Lng, Budget] --> B[Uber H3 Spatial Shortlisting<br/>Resolution 8 Hexagonal Indexing]
+    B --> C[Availability & Skill Filtering<br/>Category Match + Active + KYC Verified]
+    C --> D[Composite Ranking Score Engine<br/>40% Distance + 30% Rating + 20% Budget + 10% Jobs]
+    D --> E[Dijkstra Road-Network Routing<br/>OSM Mira-Bhayandar Graph & Exact Polyline]
+    E --> F[Top 5 Matched Verified Workers<br/>Real Road ETA, within30 Flag, Trust Badges]
+    F --> G[Turn-Based Fair Price Negotiation<br/>Customer & Worker Alternating Offers]
+    G --> H[Job Execution State Machine<br/>Accepted → In Progress → Completed]
+    H --> I[Review & Dynamic Trust Score<br/>0-100 Score & Badges: Gold / Silver / Bronze]
+```
 
 ### Key Differentiators
-- **Worker-Set Pricing & Turn-Based Negotiation:** Workers set their own rates; customers negotiate directly through alternating offers and counters (zero corporate middleman commission).
-- **Hyperlocal Haversine Matching:** Workers are matched based on distance ($40\%$), rating ($30\%$), price proximity ($20\%$), and completed jobs ($10\%$) with real-time ETA ($25\text{ km/h}$) and `within30` flag.
-- **Trust & Safety:** Unverified workers are strictly hidden from matching. 0–100 Trust Score maps into Bronze, Silver, and Gold badges. Instant SOS emergency recording with location.
+- **Worker-Set Pricing & Turn-Based Negotiation:** Workers set their own standard rates; customers and workers negotiate directly through alternating offers and counters with zero corporate middleman commission.
+- **Hyperlocal H3 + Road Network Routing:** Spatial indexing via Uber H3 filters nearby candidates; Dijkstra's algorithm over real OpenStreetMap road networks computes exact bike transit times ($25\text{ km/h}$) and route polylines.
+- **Trust & Verification:** Strict worker verification pipeline (Aadhaar & Police Clearance verification via `/admin`). Unverified workers are excluded from match results. Trust Score (0–100) dynamically awards Bronze ($\ge 40$), Silver ($\ge 60$), and Gold ($\ge 80$) badges.
+- **Emergency SOS Dispatch:** One-tap emergency alert broadcasting customer and worker GPS coordinates.
 
 ---
 
-## 2. File Tree
+## 2. Repository Layout
 
 ```
-Backend/
-├── core/
-│   ├── __init__.py
-│   ├── auth.py              # Firebase ID Token verification & Dev token resolution
-│   ├── config.py            # Pydantic Settings (.env, CORS, transit speed)
-│   └── database.py          # Unified Firestore client with local persistent store fallback
-├── data/
-│   └── store.json           # Local JSON-backed Firestore data store
-├── models/
-│   ├── __init__.py
-│   ├── job.py               # JobLocation, JobCreate, JobResponse, NearbyJobResponse
-│   ├── offer.py             # OfferCreate, OfferCounter, OfferResponse
-│   ├── review.py            # ReviewCreate, ReviewResponse
-│   ├── sos.py               # SOSLocation, SOSCreate, SOSResponse
-│   ├── user.py              # UserBase, UserCreate, UserResponse
-│   └── worker.py            # WorkerBase, WorkerResponse, MatchedWorkerResponse
-├── routers/
-│   ├── __init__.py
-│   ├── jobs.py              # POST /jobs, GET /jobs/{id}, GET /jobs/nearby, /start, /complete
-│   ├── offers.py            # POST /offers, /counter, /accept, /reject
-│   ├── reviews.py           # POST /reviews
-│   ├── sos.py               # POST /sos
-│   └── workers.py           # GET /workers/match?jobId=
-├── services/
-│   ├── __init__.py
-│   ├── distance.py          # Haversine distance, ETA (distance / 25 km/h), within30 flag
-│   ├── job_service.py       # Job state machine, address privacy masking, worker job feed
-│   ├── matching.py          # Weighted ranking score engine (40-30-20-10) & filtering
-│   ├── offer_service.py     # Turn enforcement, offer negotiation, auto-reject peers on accept
-│   ├── review_service.py    # Rolling average rating calculation on completion
-│   ├── sos_service.py       # Emergency SOS alert dispatcher
-│   └── trust.py             # 0-100 Trust Score and Bronze/Silver/Gold tier badge logic
-├── .env                     # Local environment settings
-├── .env.example             # Example environment file
-├── main.py                  # FastAPI application entrypoint with CORS & error handlers
-├── requirements.txt         # Project dependencies
-├── seed.py                  # Seeds 25 Mira Road workers, 5 customers, 5 jobs
-├── test_suite.py            # Full test suite covering all success criteria
-└── README.md                # Documentation and cURL run commands
+repair-buddy/
+├── core/                        # FastAPI core (auth, config, persistent Firestore engine)
+├── data/                        # Static road network (mira_bhayandar.graphml) & local store
+├── models/                      # Pydantic models (job, offer, review, sos, user, worker)
+├── routers/                     # FastAPI route handlers (jobs, offers, reviews, sos, workers, admin)
+├── services/                    # Domain logic (H3 matching, Dijkstra routing, trust, negotiation)
+├── scripts/                     # Automated test suites, deployment verification, and demo tools
+│   ├── e2e_deployed.py          # Complete 21-step deployed / local environment verification
+│   ├── local_test_suite.py      # Core backend logic test suite
+│   ├── local_integration_test.py# Local live API integration test
+│   ├── verify_live_flow.py      # Live worker match & verification flow check
+│   └── verify_verification_security.py # Worker registration & admin Aadhaar verification check
+├── tests/                       # 95 Pytest test cases covering all edge cases
+├── frontend/                    # React 19 + Vite + Tailwind CSS SPA
+│   ├── src/                     # React source (pages, components, api client, contexts)
+│   ├── vercel.json              # Vercel SPA catch-all rewrite rule
+│   ├── .env.production.example  # Production environment variables example
+│   └── package.json             # Frontend dependencies and build scripts
+├── demo/                        # Demo assets and smoke test screenshots
+├── DEMO.md                      # Complete 3-minute hackathon demo script & fallback guide
+├── render.yaml                  # Render Infrastructure-as-Code Blueprint
+├── Procfile                     # Web process definition for Render
+├── requirements.txt             # Python backend dependencies
+└── seed.py                      # Realistic Mira Road, Mumbai demo dataset seeder
 ```
 
 ---
 
-## 3. Quickstart & Installation
+## 3. How to Run Locally in 5 Commands
 
-### Step 1: Install Dependencies
 ```bash
+# 1. Install backend dependencies
 pip install -r requirements.txt
-```
 
-### Step 2: Seed the Database
-Seeds 25 realistic workers across 6 categories around Mira Road, Mumbai (21 verified, 4 unverified), 5 customers, and 5 jobs:
-```bash
+# 2. Seed database with Mira Road demo dataset (25 workers, 5 customers, 5 jobs, 1 admin)
 python seed.py
+
+# 3. Start backend server (port 8000)
+uvicorn main:app --reload --port 8000
+
+# 4. Install frontend dependencies
+cd frontend && npm install
+
+# 5. Start frontend dev server (port 5173)
+npm run dev
 ```
 
-### Step 3: Run the Server
-```bash
-uvicorn main:app --reload --port 8000
-```
 - API Base URL: `http://localhost:8000`
 - Interactive Swagger Docs: `http://localhost:8000/docs`
-- Redoc Documentation: `http://localhost:8000/redoc`
+- Frontend Web App: `http://localhost:5173`
 
 ---
 
-## 4. Run Automated Test Suite
-To verify all PRD success criteria (matching filters, turn-based counters, auto-rejection, state validation, rolling rating, SOS):
+## 4. Run Automated Test Suites
+
 ```bash
-python test_suite.py
+# Run all 95 backend unit and integration tests
+pytest -v
+
+# Run the full 21-step end-to-end verification against the local server
+python scripts/e2e_deployed.py http://127.0.0.1:8000
 ```
 
 ---
@@ -306,4 +310,63 @@ Repair Buddy includes automated deployment configuration for [Render](https://re
    - The deployment runs in ~30–45s installing wheel dependencies.
    - Render verifies the `/health` health check.
    - On startup, `auto_seed_if_empty()` populates the database and `load_graph()` preloads the Mira-Bhayandar road network (~2.41 MB, <160 MB peak RAM).
+
+---
+
+## 8. Deploy Frontend to Vercel
+
+The frontend is an optimized React 19 + Vite single page application with `frontend/vercel.json` configured for seamless client-side routing fallback.
+
+### Exact Click-by-Click Steps
+
+1. **Navigate to Vercel Dashboard**:
+   - Go to [vercel.com/new](https://vercel.com/new) and log in with your GitHub account.
+
+2. **Import Repository**:
+   - Select `varunjgupta25/Team-CODE.IT_VarunGupta`.
+
+3. **Configure Project Settings**:
+   - **Project Name:** `repair-buddy` (or any custom name)
+   - **Framework Preset:** `Vite`
+   - **Root Directory:** Click **Edit** and choose `frontend` *(Critical: Vercel must build inside `frontend/`)*
+   - **Build Command:** `npm run build` *(Default)*
+   - **Output Directory:** `dist` *(Default, matching `vercel.json`)*
+
+4. **Set Environment Variables**:
+   Expand the **Environment Variables** panel and add:
+
+   | Variable | Value | Description |
+   |---|---|---|
+   | `VITE_USE_MOCK` | `false` | Disables client mock data and switches API client to LIVE mode |
+   | `VITE_API_BASE_URL` | `https://<your-render-service>.onrender.com/api` | Full URL to your Render backend API (must end with `/api`) |
+
+5. **Deploy**:
+   - Click **Deploy**. Vercel will install dependencies and produce the production bundle in under 30 seconds.
+   - Note your deployed URL (e.g. `https://repair-buddy-delta.vercel.app`).
+
+6. **Link Vercel to Render Backend**:
+   - Return to your [Render Dashboard](https://dashboard.render.com).
+   - In your backend service's **Environment** tab, update `CORS_ORIGINS` to include your live Vercel URL:
+     ```
+     CORS_ORIGINS=http://localhost:5173,https://<your-vercel-domain>.vercel.app
+     ```
+   - Click **Save Changes** (Render will automatically re-deploy in ~15s).
+
+---
+
+## 9. Automated Post-Deployment Verification
+
+Once both Render and Vercel services are running, execute the end-to-end verification script from your local terminal:
+
+```bash
+python scripts/e2e_deployed.py https://<your-render-service>.onrender.com --frontend-url https://<your-vercel-domain>.vercel.app
+```
+
+This automated suite runs 21 comprehensive validation checks against the live environment:
+- **Cold-Start Resilience:** Automatically polls `/health` with exponential backoff for up to 90 seconds while Render spins up.
+- **CORS Preflight:** Validates that preflight requests from the Vercel origin are allowed while unauthorized origins are blocked.
+- **Seeded Data:** Validates seed workers and the admin user (`admin_user`).
+- **Complete Booking Journey:** Posts a job, queries Dijkstra matching (verifying road ETA and polyline coordinates), negotiates counter-offers, starts job, completes job, and submits a review with rating recalculation.
+- **Worker Verification Lifecycle:** Registers a new worker, submits Aadhaar KYC, retrieves pending queue via `/admin` with masked Aadhaar, approves the worker, and verifies immediate qualification for job matches.
+- **Optional Browser Smoke Test:** If Playwright is installed, launches a headless browser to verify the frontend UI and captures verification screenshots into `demo/screenshots/`.
 
