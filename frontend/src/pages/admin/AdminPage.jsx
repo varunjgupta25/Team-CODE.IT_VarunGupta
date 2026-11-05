@@ -11,6 +11,7 @@ import {
   Search,
   Clock,
   Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -22,15 +23,30 @@ export function AdminPage() {
   const [isApproving, setIsApproving] = useState(false);
   const [pendingList, setPendingList] = useState([]);
   const [isLoadingPending, setIsLoadingPending] = useState(false);
+  const [pendingError, setPendingError] = useState(null);
   const [recentlyApproved, setRecentlyApproved] = useState([]);
 
   // Fetch pending verifications via API abstraction
   const loadPendingWorkers = useCallback(async () => {
     setIsLoadingPending(true);
+    setPendingError(null);
     try {
       const list = await api.getPendingVerifications();
       setPendingList(Array.isArray(list) ? list : []);
-    } catch {
+    } catch (err) {
+      const status = err?.status || err?.response?.status;
+      let errorMsg = "Couldn't reach the server";
+      if (status === 401 || status === 403) {
+        errorMsg = "You don't have permission or your session expired";
+      } else if (status >= 500 || !status) {
+        errorMsg = "Couldn't reach the server";
+      } else if (err?.message) {
+        errorMsg = err.message;
+      }
+      setPendingError({
+        message: errorMsg,
+        status,
+      });
       setPendingList([]);
     } finally {
       setIsLoadingPending(false);
@@ -38,16 +54,8 @@ export function AdminPage() {
   }, []);
 
   useEffect(() => {
-    let active = true;
-    api.getPendingVerifications().then((list) => {
-      if (active) setPendingList(Array.isArray(list) ? list : []);
-    }).catch(() => {
-      if (active) setPendingList([]);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+    loadPendingWorkers();
+  }, [loadPendingWorkers]);
 
   const handleApprove = async (targetUid) => {
     const uidToApprove = (targetUid || workerIdInput).trim();
@@ -186,7 +194,27 @@ export function AdminPage() {
           </button>
         </div>
 
-        {pendingList.length > 0 ? (
+        {isLoadingPending ? (
+          <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center justify-center gap-2 text-center">
+            <RefreshCw className="w-5 h-5 text-purple-600 animate-spin" />
+            <p className="text-xs text-slate-500 font-medium">Loading pending verifications...</p>
+          </div>
+        ) : pendingError ? (
+          <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-center space-y-2">
+            <div className="flex items-center justify-center gap-1.5 text-red-700 font-bold text-xs">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>{pendingError.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={loadPendingWorkers}
+              className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm active:scale-95 transition inline-flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Retry</span>
+            </button>
+          </div>
+        ) : pendingList.length > 0 ? (
           <div className="space-y-2">
             {pendingList.map((w) => (
               <div
@@ -217,7 +245,7 @@ export function AdminPage() {
         ) : (
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-center">
             <p className="text-xs text-slate-500 font-medium">
-              No workers currently in queue.
+              No pending verifications
             </p>
             <p className="text-[10px] text-slate-400 mt-0.5">
               Enter any newly registered or unverified worker UID above to approve immediately.

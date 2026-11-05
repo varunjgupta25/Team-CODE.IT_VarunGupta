@@ -13,6 +13,7 @@ import {
   AlertCircle,
   X,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 
 const DOC_TYPES = [
@@ -22,7 +23,7 @@ const DOC_TYPES = [
 ];
 
 export function VerificationCard() {
-  const { user, updateUser, refreshWorkerProfile } = useAuthStore();
+  const { user, updateUser, refreshWorkerProfile, syncStatus, lastError, retryLastSync } = useAuthStore();
   const [docType, setDocType] = useState('aadhaar');
   const [docNumber, setDocNumber] = useState('');
   const [localPhotoPreview, setLocalPhotoPreview] = useState(null);
@@ -32,13 +33,13 @@ export function VerificationCard() {
   // Sync latest status from backend on mount
   useEffect(() => {
     if (refreshWorkerProfile) {
-      refreshWorkerProfile();
+      refreshWorkerProfile().catch(() => {});
     }
   }, [refreshWorkerProfile]);
 
   const isVerified = Boolean(user?.verified);
   const isPending = user?.verificationStatus === 'pending';
-  const trust = user ? computeTrust(user) : { score: 60, tier: 'Bronze' };
+  const trust = user ? computeTrust(user) : { score: null, tier: null };
 
   // Local document photo preview only - never uploaded or sent
   const handlePhotoSelect = (e) => {
@@ -100,32 +101,53 @@ export function VerificationCard() {
     }
   };
 
+  const syncErrorBanner = syncStatus === 'failed' && lastError && (
+    <div className="p-3 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-between gap-2 text-xs text-red-900">
+      <div className="flex items-center gap-2">
+        <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+        <span className="text-[11px] text-red-700">{lastError}</span>
+      </div>
+      <button
+        type="button"
+        onClick={() => retryLastSync && retryLastSync()}
+        disabled={syncStatus === 'syncing'}
+        className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold text-[10px] shadow-sm shrink-0 flex items-center gap-1"
+      >
+        <RefreshCw className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+        <span>Retry</span>
+      </button>
+    </div>
+  );
+
   // State 1: Verified
   if (isVerified) {
     return (
-      <div className="bg-gradient-to-br from-emerald-500/10 via-emerald-50 to-white rounded-3xl p-5 border border-emerald-200 shadow-sm space-y-3">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
-              <CheckCircle2 className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-sm text-slate-900">ID Verification Complete</span>
-                <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
-                  Verified
-                </span>
+      <div className="space-y-3">
+        {syncErrorBanner}
+        <div className="bg-gradient-to-br from-emerald-500/10 via-emerald-50 to-white rounded-3xl p-5 border border-emerald-200 shadow-sm space-y-3">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
+                <CheckCircle2 className="w-6 h-6" />
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Govt ID verified. Your profile receives priority in customer matches.
-              </p>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-extrabold text-sm text-slate-900">ID Verification Complete</span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
+                    Verified
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Govt ID verified. Your profile receives priority in customer matches.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="pt-2 border-t border-emerald-100 flex items-center justify-between text-xs">
-          <span className="text-slate-600 font-medium text-[11px]">Active Trust Status:</span>
-          <TrustBadge score={trust.score} tier={trust.tier} />
+          <div className="pt-2 border-t border-emerald-100 flex items-center justify-between text-xs">
+            <span className="text-slate-600 font-medium text-[11px]">Active Trust Status:</span>
+            <TrustBadge score={trust.score} tier={trust.tier} />
+          </div>
         </div>
       </div>
     );
@@ -134,35 +156,46 @@ export function VerificationCard() {
   // State 2: Pending review
   if (isPending) {
     return (
-      <div className="bg-gradient-to-br from-amber-500/10 via-amber-50 to-white rounded-3xl p-5 border border-amber-200 shadow-sm space-y-3">
-        <div className="flex items-start gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
-            <Clock className="w-6 h-6 animate-spin-slow" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-sm text-slate-900">Verification Under Review</span>
-              <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-black uppercase">
-                Pending
-              </span>
+      <div className="space-y-3">
+        {syncErrorBanner}
+        <div className="bg-gradient-to-br from-amber-500/10 via-amber-50 to-white rounded-3xl p-5 border border-amber-200 shadow-sm space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+              <Clock className="w-6 h-6 animate-spin-slow" />
             </div>
-            <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
-              Your government ID document has been submitted. Our compliance team is verifying your details. You will appear in customer job searches as soon as approved!
-            </p>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-sm text-slate-900">Verification Under Review</span>
+                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-black uppercase">
+                  Pending
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
+                Your government ID document has been submitted. Our compliance team is verifying your details. You will appear in customer job searches as soon as approved!
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="pt-2 border-t border-amber-100 flex items-center justify-between text-[11px] text-amber-900 font-semibold bg-amber-100/60 p-2.5 rounded-xl">
-          <span className="flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            Expected approval: ~15 mins
-          </span>
-          <button
-            onClick={() => refreshWorkerProfile && refreshWorkerProfile()}
-            className="text-[10px] text-amber-700 underline font-bold"
-          >
-            Check Status
-          </button>
+          <div className="pt-2 border-t border-amber-100 flex items-center justify-between text-[11px] text-amber-900 font-semibold bg-amber-100/60 p-2.5 rounded-xl">
+            <span className="flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+              Expected approval: ~15 mins
+            </span>
+            <button
+              onClick={() => refreshWorkerProfile && refreshWorkerProfile()}
+              disabled={syncStatus === 'syncing'}
+              className="text-[10px] text-amber-700 underline font-bold disabled:opacity-50 inline-flex items-center gap-1"
+            >
+              {syncStatus === 'syncing' ? (
+                <>
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  <span>Checking...</span>
+                </>
+              ) : (
+                <span>Check Status</span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -172,7 +205,9 @@ export function VerificationCard() {
   const selectedDocObj = DOC_TYPES.find((d) => d.id === docType) || DOC_TYPES[0];
 
   return (
-    <div className="bg-white rounded-3xl p-5 border-2 border-brand-200 shadow-md space-y-4">
+    <div className="space-y-3">
+      {syncErrorBanner}
+      <div className="bg-white rounded-3xl p-5 border-2 border-brand-200 shadow-md space-y-4">
       <div className="flex items-start gap-3">
         <div className="w-11 h-11 rounded-2xl bg-brand-600 text-white flex items-center justify-center shadow-md shadow-brand-500/25 shrink-0">
           <ShieldCheck className="w-6 h-6" />
@@ -291,5 +326,6 @@ export function VerificationCard() {
         </button>
       </form>
     </div>
+  </div>
   );
 }

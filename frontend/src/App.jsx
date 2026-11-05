@@ -45,6 +45,14 @@ function RequireRole({ role: requiredRole, children }) {
 }
 
 export default function App() {
+  const initAuthListener = useAuthStore((s) => s.initAuthListener);
+
+  React.useEffect(() => {
+    const unsub = initAuthListener();
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [initAuthListener]);
   return (
     <BrowserRouter>
       <Routes>

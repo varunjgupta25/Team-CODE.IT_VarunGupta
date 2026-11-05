@@ -69,10 +69,12 @@ export const useJobStore = create((set, get) => ({
   },
 
   // GET /jobs/nearby
-  fetchNearbyJobs: async (coords) => {
+  // TODO: re-enable lat/lng/radiusKm when backend supports them
+  fetchNearbyJobs: async (_coords) => {
     set({ isLoading: true });
     try {
-      const raw = await api.getNearbyJobs(coords);
+      // TODO: re-enable lat/lng/radiusKm when backend supports them
+      const raw = await api.getNearbyJobs();
       const jobs = (raw || []).map((item) => {
         if (item && item.job) {
           return {
@@ -86,9 +88,8 @@ export const useJobStore = create((set, get) => ({
       });
       set({ nearbyJobs: jobs, isLoading: false });
       return jobs;
-    } catch (err) {
+    } catch {
       set({ isLoading: false });
-      console.warn('Error fetching nearby jobs:', err);
       return [];
     }
   },

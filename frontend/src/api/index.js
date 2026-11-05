@@ -18,9 +18,13 @@ export const api = {
     return apiClient.get(`/jobs/${jobId}`);
   },
 
-  async getNearbyJobs(workerCoords, radiusKm) {
-    if (isMock) return mockStore.getNearbyJobs(workerCoords, radiusKm);
-    return apiClient.get('/jobs/nearby', { params: { ...workerCoords, radiusKm } });
+  // TODO: re-enable lat/lng/radiusKm when backend supports them
+  async getNearbyJobs(_workerCoords, _radiusKm) {
+    if (isMock) return mockStore.getNearbyJobs();
+    // STOP sending lat/lng/radiusKm from frontend until backend supports them.
+    // Backend ignores query params and uses the worker's saved profile location.
+    // TODO: re-enable lat/lng/radiusKm when backend supports them
+    return apiClient.get('/jobs/nearby');
   },
 
   // Workers Match
@@ -100,12 +104,9 @@ export const api = {
 
   async getPendingVerifications() {
     if (isMock) return mockStore.getPendingVerifications();
-    try {
-      const res = await apiClient.get('/admin/verifications/pending');
-      return Array.isArray(res) ? res : (res?.data || []);
-    } catch {
-      return [];
-    }
+    // Let errors propagate so callers can distinguish "empty queue" from "request failed".
+    const res = await apiClient.get('/admin/verifications/pending');
+    return Array.isArray(res) ? res : (res?.data ?? []);
   },
 
   async registerWorker(payload) {

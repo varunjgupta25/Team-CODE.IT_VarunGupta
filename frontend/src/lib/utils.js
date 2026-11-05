@@ -53,8 +53,13 @@ export function formatTimeAgo(timestamp) {
  * verified (30) + rating scaled (30) + jobs done capped (20) + account age (10) + clean record (10) - penalty
  */
 export function computeTrust(worker) {
+  // If core fields are absent (profile not yet loaded), return null values — no fake defaults.
+  if (!worker) return { score: null, tier: null, badgeColor: null };
+
   const verifiedScore = worker.verified ? 30 : 0;
-  const ratingScore = Math.min(30, Math.round(((worker.rating || 4.5) / 5) * 30));
+  const ratingScore = worker.rating != null
+    ? Math.min(30, Math.round((worker.rating / 5) * 30))
+    : 0;
   const jobsDoneScore = Math.min(20, Math.round(((worker.jobsDone || 0) / 50) * 20));
   const accountAgeScore = 10; // Active > 6 months
   const cleanRecordScore = (worker.reportCount || 0) > 0 ? 0 : 10;

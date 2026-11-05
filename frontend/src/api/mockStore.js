@@ -477,8 +477,9 @@ export const mockStore = {
 
     worker.verified = true;
     worker.verificationStatus = 'approved';
-    worker.trustScore = Math.min(100, (worker.trustScore || 60) + 30);
-    worker.trustBadge = worker.trustScore >= 90 ? 'Gold' : 'Silver';
+    const computed = computeTrust(worker);
+    worker.trustScore = computed.score;
+    worker.trustBadge = computed.tier;
     saveWorkers(workers);
 
     const sessionUser = storage.get('rb_auth_user_session', null);
