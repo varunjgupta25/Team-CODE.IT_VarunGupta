@@ -65,3 +65,4 @@ During Phase 1 Backend Stabilization:
 
 * **Mobile/Web Frontend:** No breaking changes. Existing UI components can continue calling all existing routes without code modifications.
 * **Admin Dashboard:** Can now integrate the reject action button using `POST /admin/verifications/{uid}/reject` without needing raw database edits.
+

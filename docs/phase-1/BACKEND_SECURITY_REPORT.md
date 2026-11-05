@@ -39,3 +39,4 @@
 
 * **Distributed Rate Limiting:** The current token bucket operates in-memory per single OS process. If scaling to multiple Uvicorn worker processes or across multi-container Kubernetes pods, consider an optional Redis-backed token bucket.
 * **Automated Identity Verification (KYC):** Currently, ID verification uses Aadhaar masking with manual admin approval. Integrating a verified KYC provider API (e.g. DigiLocker or Cashfree) can automate validation in Phase 2.
+

@@ -57,3 +57,4 @@ AUTO_FLAG_WINDOW_HOURS=48
 * **Database:** Multi-resource updates wrapped in transactions; Firestore compound index manifest generated.
 * **Reliability:** 188 automated tests passing across 19 suites with zero regressions.
 * **Verification:** Live production health probe confirms active connection to Firestore (`mock_mode: false`).
+

@@ -67,3 +67,4 @@ All key modules (Authentication, Database, Jobs, Matching, Offers, Trust & Verif
 3. **Pydantic schema definitions** without breaking changes to existing client contracts.
 4. **Frozen matching response contract** (`GET /workers/match`).
 5. **Dijkstra road-network routing** on the local Mira Road OpenStreetMap graph.
+
