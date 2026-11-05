@@ -43,7 +43,9 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def assemble_environment_and_cors(self) -> "Settings":
         # 1. Standardize ENV / ENVIRONMENT
-        resolved_env = (self.ENVIRONMENT or self.ENV or "development").strip().lower()
+        explicit_env_provided = "ENV" in self.model_fields_set
+        preferred_env = self.ENV if explicit_env_provided else (self.ENVIRONMENT or self.ENV)
+        resolved_env = (preferred_env or "development").strip().lower()
         self.ENV = resolved_env
         self.ENVIRONMENT = resolved_env
 
