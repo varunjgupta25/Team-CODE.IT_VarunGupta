@@ -1,9 +1,12 @@
-import logging
 from contextlib import asynccontextmanager
-from fastapi import APIRouter, FastAPI, Request, status
-from fastapi.exceptions import RequestValidationError
+import logging
+from typing import Any, Dict
+
+from fastapi import FastAPI, APIRouter, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
 from core.config import settings
 from routers.jobs import router as jobs_router
 from routers.workers import router as workers_router
@@ -19,7 +22,10 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan event handler: Pre-load the OSM graph and auto-seed if empty."""
+    """Lifespan event handler: Connect database, pre-load graph, and auto-seed if needed."""
+    from core.database import db
+    db.connect()
+
     if settings.USE_MOCK_FIREBASE and getattr(settings, "AUTO_SEED", True):
         try:
             from seed import auto_seed_if_empty
@@ -32,7 +38,10 @@ async def lifespan(app: FastAPI):
         load_graph()
     except Exception as exc:  # pragma: no cover
         logger.warning("startup: graph preload failed: %s", exc)
+
     yield
+
+    db.disconnect()
 
 
 app = FastAPI(
@@ -42,21 +51,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware for React frontend (localhost:5173) and production / preview origins
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-]
-if isinstance(settings.CORS_ORIGINS, list):
-    for o in settings.CORS_ORIGINS:
-        if o not in origins:
-            origins.append(o)
-
+# Hardened CORS policy: dynamic resolution based on environment, no wildcards
+cors_origins = [o for o in (settings.ALLOWED_ORIGINS or []) if o != "*"]
 cors_kwargs = {
-    "allow_origins": origins,
+    "allow_origins": cors_origins,
     "allow_credentials": True,
-    "allow_methods": ["*"],
+    "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     "allow_headers": ["*"],
 }
 if getattr(settings, "CORS_ORIGIN_REGEX", None):
@@ -133,10 +133,13 @@ health_router = APIRouter(tags=["System"])
 
 @health_router.get("/health")
 def health_check():
+    from core.database import db
+    db_mode = "mock_in_memory" if getattr(db, "_use_mock", True) else "firestore"
     return {
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "mock_mode": settings.USE_MOCK_FIREBASE,
+        "database": db_mode,
         "transit_speed_kmh": settings.TRANSIT_SPEED_KMH
     }
 

@@ -1,0 +1,52 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths-ignore:
+      - "frontend/**"
+      - "README.md"
+      - "DEMO.md"
+  pull_request:
+    branches: [ "main", "master" ]
+    paths-ignore:
+      - "frontend/**"
+      - "README.md"
+      - "DEMO.md"
+
+jobs:
+  test:
+    name: Backend Test & Lint
+    runs-on: ubuntu-latest
+
+    env:
+      ENV: development
+      ENVIRONMENT: development
+      USE_MOCK_FIREBASE: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run Ruff Linting
+        run: |
+          ruff check --select E9,F63,F7,F82 .
+
+      - name: Run Pytest Test Suite
+        run: |
+          pytest -q
+

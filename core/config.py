@@ -1,6 +1,6 @@
 import os
 from typing import List, Optional, Union
-from pydantic import field_validator
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,31 +13,75 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "RepairBuddy API"
     ENV: str = "development"
+    ENVIRONMENT: Optional[str] = None
     PORT: int = 8000
     HOST: str = "0.0.0.0"
 
     # CORS Configuration
-    CORS_ORIGINS: Union[str, List[str]] = "http://localhost:5173,http://127.0.0.1:5173"
+    ALLOWED_ORIGINS: Optional[Union[str, List[str]]] = None
+    CORS_ORIGINS: Optional[Union[str, List[str]]] = None
     CORS_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        if isinstance(v, str):
-            return [i.strip() for i in v.split(",") if i.strip()]
-        elif isinstance(v, list):
-            return v
-        return ["http://localhost:5173", "http://127.0.0.1:5173"]
-
-    # Auto-seed configuration on startup
-    AUTO_SEED: bool = True
-
-    # Firebase Admin Configuration
+    # Database / Firebase Admin Configuration
     FIREBASE_CREDENTIALS_PATH: str = ""
+    FIREBASE_CREDENTIALS_JSON: Optional[str] = None
+    GOOGLE_APPLICATION_CREDENTIALS_JSON: Optional[str] = None
+    FIRESTORE_PROJECT_ID: Optional[str] = None
+    DATABASE_URL: Optional[str] = None
     USE_MOCK_FIREBASE: bool = True
+    AUTO_SEED: bool = True
 
     # Transit Speed in km/h for ETA calculation (PRD: 25 km/h)
     TRANSIT_SPEED_KMH: float = 25.0
+
+    @model_validator(mode="after")
+    def assemble_environment_and_cors(self) -> "Settings":
+        # 1. Standardize ENV / ENVIRONMENT
+        resolved_env = (self.ENVIRONMENT or self.ENV or "development").strip().lower()
+        self.ENV = resolved_env
+        self.ENVIRONMENT = resolved_env
+
+        # 2. Synchronize credentials JSON alias
+        if not self.FIREBASE_CREDENTIALS_JSON and self.GOOGLE_APPLICATION_CREDENTIALS_JSON:
+            self.FIREBASE_CREDENTIALS_JSON = self.GOOGLE_APPLICATION_CREDENTIALS_JSON
+
+        # 3. Gather origins: ALLOWED_ORIGINS takes precedence over CORS_ORIGINS
+        selected_source = self.ALLOWED_ORIGINS if self.ALLOWED_ORIGINS is not None else self.CORS_ORIGINS
+        raw_origins: List[str] = []
+        if isinstance(selected_source, str):
+            raw_origins.extend([item.strip() for item in selected_source.split(",") if item.strip()])
+        elif isinstance(selected_source, list):
+            raw_origins.extend([str(item).strip() for item in selected_source if str(item).strip()])
+
+        # Remove wildcards completely - reject '*' and wildcard origins
+        clean_origins: List[str] = []
+        for origin in raw_origins:
+            if origin != "*" and origin not in clean_origins:
+                clean_origins.append(origin)
+
+        # 4. Dynamic CORS resolution based on environment
+        dev_defaults = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+
+        if self.ENV == "development":
+            # Provide sensible development defaults ONLY when ENVIRONMENT=development
+            if not clean_origins:
+                clean_origins = list(dev_defaults)
+            else:
+                for default_origin in dev_defaults:
+                    if default_origin not in clean_origins:
+                        clean_origins.append(default_origin)
+        elif self.ENV in ["production", "staging"]:
+            # Strictly reject requests from non-whitelisted origins in production environments
+            pass
+
+        self.ALLOWED_ORIGINS = clean_origins
+        self.CORS_ORIGINS = clean_origins
+        return self
 
 
 settings = Settings()

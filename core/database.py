@@ -1,8 +1,10 @@
+import copy
+from datetime import datetime, timezone
 import json
 import logging
 import os
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -11,16 +13,85 @@ logger = logging.getLogger(__name__)
 try:
     import firebase_admin
     from firebase_admin import credentials, firestore
+    from google.api_core import retry as google_retry
     FIREBASE_AVAILABLE = True
 except ImportError:
     FIREBASE_AVAILABLE = False
 
 
+class TransactionContext:
+    """
+    Unified transaction context passed to transaction callbacks.
+    Provides atomic read-then-write semantics across both Firestore and mock store.
+    """
+
+    def __init__(self, db_instance: "FirestoreDB", real_tx=None):
+        self._db = db_instance
+        self._real_tx = real_tx
+        self._pending_writes: List[Callable[[], None]] = []
+
+    def get_document(self, collection: str, doc_id: str) -> Optional[Dict[str, Any]]:
+        if self._real_tx and self._db._firestore_client:
+            doc_ref = self._db._firestore_client.collection(collection).document(doc_id)
+            snapshot = doc_ref.get(transaction=self._real_tx)
+            if snapshot.exists:
+                data = snapshot.to_dict() or {}
+                if not data.get("isDeleted", False):
+                    data["id"] = snapshot.id
+                    return data
+            return None
+        return self._db.get_document(collection, doc_id)
+
+    def set_document(self, collection: str, doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        doc_data = dict(data)
+        doc_data["id"] = doc_id
+        if "created_at" not in doc_data and "createdAt" not in doc_data:
+            doc_data["created_at"] = now_iso
+        doc_data["updated_at"] = now_iso
+
+        if self._real_tx and self._db._firestore_client:
+            doc_ref = self._db._firestore_client.collection(collection).document(doc_id)
+            self._real_tx.set(doc_ref, doc_data)
+            return doc_data
+        return self._db.set_document(collection, doc_id, doc_data)
+
+    def update_document(self, collection: str, doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        update_data = dict(data)
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        if self._real_tx and self._db._firestore_client:
+            doc_ref = self._db._firestore_client.collection(collection).document(doc_id)
+            self._real_tx.update(doc_ref, update_data)
+            return update_data
+        return self._db.update_document(collection, doc_id, update_data)
+
+    def delete_document(self, collection: str, doc_id: str, soft: bool = True) -> bool:
+        if soft:
+            self.update_document(collection, doc_id, {
+                "isDeleted": True,
+                "deleted_at": datetime.now(timezone.utc).isoformat()
+            })
+            return True
+
+        if self._real_tx and self._db._firestore_client:
+            doc_ref = self._db._firestore_client.collection(collection).document(doc_id)
+            self._real_tx.delete(doc_ref)
+            return True
+        return self._db.delete_document(collection, doc_id, soft=False)
+
+
 class FirestoreDB:
     """
-    Unified database interface for Firestore.
-    Operates seamlessly against either a live Google Cloud Firestore instance or
-    a thread-safe local JSON-backed store when running in mock/local development mode.
+    Unified production-grade database interface for Firestore.
+    Features:
+    - Connection pooling & lifecycle management (connect on startup, disconnect on shutdown)
+    - Credentials loaded from JSON environment variable or service account path
+    - Server-side indexed querying using .where()
+    - Atomic transactions support with retry strategies
+    - Soft-delete and timestamp tracking (created_at, updated_at)
+    - Fallback in-memory storage strictly isolated to local testing & development
+    - Resilient to read-only environments
     """
 
     def __init__(self):
@@ -38,67 +109,113 @@ class FirestoreDB:
             "reports": {},
         }
         self._firestore_client = None
-        self._save_to_disk = True
+        self._save_to_disk = False
 
         try:
             os.makedirs(self._data_dir, exist_ok=True)
         except Exception as exc:
             logger.warning("Could not create data dir %s: %s. Continuing in memory.", self._data_dir, exc)
 
-        self._load_local_store()
-
-        if not self._use_mock and FIREBASE_AVAILABLE:
+        # If real firebase requested or in production, initialize connection
+        if not self._use_mock or settings.ENV in ["production", "staging"]:
             self._init_real_firebase()
 
+    def connect(self):
+        """
+        Lifecycle hook invoked during application startup.
+        Ensures database readiness and validates remote connection in production.
+        """
+        if not self._use_mock:
+            if not FIREBASE_AVAILABLE:
+                raise RuntimeError("CRITICAL: firebase-admin is required for production database mode.")
+            if not self._firestore_client:
+                self._init_real_firebase()
+            if not self._firestore_client:
+                raise RuntimeError("CRITICAL: Failed to connect to production Firestore database.")
+            logger.info("Successfully established connection to Firestore database.")
+        else:
+            logger.info("Database initialized in development/mock in-memory mode.")
+
+    def disconnect(self):
+        """
+        Lifecycle hook invoked during application shutdown.
+        Closes connection pools and releases socket resources cleanly.
+        """
+        if self._firestore_client is not None:
+            try:
+                if hasattr(self._firestore_client, "close"):
+                    self._firestore_client.close()
+                logger.info("Database connection closed cleanly.")
+            except Exception as exc:
+                logger.warning("Error during database shutdown: %s", exc)
+            finally:
+                self._firestore_client = None
+
     def _init_real_firebase(self):
+        if not FIREBASE_AVAILABLE:
+            if settings.ENV in ["production", "staging"]:
+                raise RuntimeError("CRITICAL: firebase-admin is not installed in production environment.")
+            self._use_mock = True
+            return
+
         try:
-            if settings.FIREBASE_CREDENTIALS_PATH and os.path.exists(settings.FIREBASE_CREDENTIALS_PATH):
+            cred = None
+            if settings.FIREBASE_CREDENTIALS_JSON:
+                try:
+                    cred_dict = json.loads(settings.FIREBASE_CREDENTIALS_JSON)
+                    cred = credentials.Certificate(cred_dict)
+                except Exception as json_err:
+                    raise ValueError(f"Invalid FIREBASE_CREDENTIALS_JSON: {json_err}") from json_err
+            elif settings.FIREBASE_CREDENTIALS_PATH and os.path.exists(settings.FIREBASE_CREDENTIALS_PATH):
                 cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
+            elif settings.FIRESTORE_PROJECT_ID:
+                cred = credentials.ApplicationDefault()
+
+            if cred:
+                app_options = {}
+                if settings.FIRESTORE_PROJECT_ID:
+                    app_options["projectId"] = settings.FIRESTORE_PROJECT_ID
+
                 if not firebase_admin._apps:
-                    firebase_admin.initialize_app(cred)
+                    firebase_admin.initialize_app(cred, app_options if app_options else None)
+
                 self._firestore_client = firestore.client()
                 self._use_mock = False
+                logger.info("Real Firestore client initialized successfully.")
             else:
-                # Fallback to local store if file does not exist
+                if settings.ENV in ["production", "staging"]:
+                    raise RuntimeError("CRITICAL: No valid Firestore credentials found for production environment.")
                 self._use_mock = True
-        except Exception:
+        except Exception as exc:
+            if settings.ENV in ["production", "staging"]:
+                raise RuntimeError(f"Database connection failure in production: {exc}") from exc
+            logger.warning("Firestore initialization skipped: %s. Using in-memory store.", exc)
             self._use_mock = True
 
-    def _load_local_store(self):
-        with self._lock:
-            if os.path.exists(self._store_file):
-                try:
-                    with open(self._store_file, "r", encoding="utf-8") as f:
-                        loaded = json.load(f)
-                        for col in self._mem_store:
-                            if col in loaded:
-                                self._mem_store[col] = loaded[col]
-                except Exception as exc:
-                    logger.warning("Could not read local store file %s: %s. Continuing in memory.", self._store_file, exc)
-
     def _save_local_store(self):
-        if self._use_mock and getattr(self, "_save_to_disk", True):
+        if self._use_mock and getattr(self, "_save_to_disk", False):
             with self._lock:
                 try:
                     with open(self._store_file, "w", encoding="utf-8") as f:
                         json.dump(self._mem_store, f, indent=2, default=str)
                 except Exception as exc:
-                    logger.warning("Failed to save local store to %s (read-only filesystem?): %s. Continuing in memory.", self._store_file, exc)
+                    logger.warning("Failed to save local store to %s: %s. Continuing in memory.", self._store_file, exc)
 
     def get_document(self, collection: str, doc_id: str) -> Optional[Dict[str, Any]]:
         if not self._use_mock and self._firestore_client:
             doc_ref = self._firestore_client.collection(collection).document(doc_id)
             doc = doc_ref.get()
             if doc.exists:
-                data = doc.to_dict()
-                data["id"] = doc.id
-                return data
+                data = doc.to_dict() or {}
+                if not data.get("isDeleted", False):
+                    data["id"] = doc.id
+                    return data
             return None
 
         with self._lock:
             col = self._mem_store.get(collection, {})
             doc = col.get(doc_id)
-            if doc is not None:
+            if doc is not None and not doc.get("isDeleted", False):
                 copied = dict(doc)
                 copied["id"] = doc_id
                 return copied
@@ -107,6 +224,10 @@ class FirestoreDB:
     def set_document(self, collection: str, doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         doc_data = dict(data)
         doc_data["id"] = doc_id
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if "created_at" not in doc_data and "createdAt" not in doc_data:
+            doc_data["created_at"] = now_iso
+        doc_data["updated_at"] = now_iso
 
         if not self._use_mock and self._firestore_client:
             self._firestore_client.collection(collection).document(doc_id).set(doc_data)
@@ -120,21 +241,33 @@ class FirestoreDB:
         return doc_data
 
     def update_document(self, collection: str, doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        update_data = dict(data)
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
         if not self._use_mock and self._firestore_client:
-            self._firestore_client.collection(collection).document(doc_id).update(data)
+            self._firestore_client.collection(collection).document(doc_id).update(update_data)
             return self.get_document(collection, doc_id)
 
         with self._lock:
             if collection not in self._mem_store or doc_id not in self._mem_store[collection]:
                 raise KeyError(f"Document {doc_id} not found in collection {collection}")
-            self._mem_store[collection][doc_id].update(data)
+            self._mem_store[collection][doc_id].update(update_data)
             updated = dict(self._mem_store[collection][doc_id])
             updated["id"] = doc_id
+            self._save_local_store()
+            return updated
 
-        self._save_local_store()
-        return updated
+    def delete_document(self, collection: str, doc_id: str, soft: bool = False) -> bool:
+        if soft:
+            try:
+                self.update_document(collection, doc_id, {
+                    "isDeleted": True,
+                    "deleted_at": datetime.now(timezone.utc).isoformat()
+                })
+                return True
+            except KeyError:
+                return False
 
-    def delete_document(self, collection: str, doc_id: str) -> bool:
         if not self._use_mock and self._firestore_client:
             self._firestore_client.collection(collection).document(doc_id).delete()
             return True
@@ -151,21 +284,40 @@ class FirestoreDB:
             docs = self._firestore_client.collection(collection).stream()
             result = []
             for d in docs:
-                item = d.to_dict()
-                item["id"] = d.id
-                result.append(item)
+                item = d.to_dict() or {}
+                if not item.get("isDeleted", False):
+                    item["id"] = d.id
+                    result.append(item)
             return result
 
         with self._lock:
             col = self._mem_store.get(collection, {})
             results = []
             for doc_id, doc in col.items():
-                item = dict(doc)
-                item["id"] = doc_id
-                results.append(item)
+                if not doc.get("isDeleted", False):
+                    item = dict(doc)
+                    item["id"] = doc_id
+                    results.append(item)
             return results
 
     def query_collection(self, collection: str, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Execute filtered collection queries.
+        In real Firestore mode, uses server-side .where() clauses to avoid full table scans.
+        """
+        if not self._use_mock and self._firestore_client:
+            query = self._firestore_client.collection(collection)
+            for k, v in filters.items():
+                query = query.where(k, "==", v)
+            docs = query.stream()
+            results = []
+            for d in docs:
+                item = d.to_dict() or {}
+                if not item.get("isDeleted", False):
+                    item["id"] = d.id
+                    results.append(item)
+            return results
+
         all_docs = self.list_collection(collection)
         filtered = []
         for doc in all_docs:
@@ -177,6 +329,32 @@ class FirestoreDB:
             if match:
                 filtered.append(doc)
         return filtered
+
+    def run_transaction(self, callback: Callable[[TransactionContext], Any]) -> Any:
+        """
+        Execute a unit of work inside an atomic transaction.
+        In Firestore mode, retries automatically on contention via Firestore transactional engine.
+        In mock mode, provides isolated snapshot semantics with rollback on error.
+        """
+        if not self._use_mock and self._firestore_client:
+            @firestore.transactional
+            def _firestore_tx(transaction):
+                ctx = TransactionContext(self, real_tx=transaction)
+                return callback(ctx)
+
+            tx = self._firestore_client.transaction()
+            return _firestore_tx(tx)
+
+        with self._lock:
+            snapshot = copy.deepcopy(self._mem_store)
+            ctx = TransactionContext(self)
+            try:
+                result = callback(ctx)
+                self._save_local_store()
+                return result
+            except Exception:
+                self._mem_store = snapshot
+                raise
 
     def clear_collection(self, collection: str):
         if not self._use_mock and self._firestore_client:

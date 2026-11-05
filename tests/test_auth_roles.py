@@ -170,3 +170,37 @@ def test_user_cannot_read_another_users_job_offers(
     assert res.status_code == 200
     assert len(res.json()) >= 1
     assert res.json()[0]["id"] == offer_id
+
+
+def test_dev_tokens_strictly_prohibited_in_production(client, monkeypatch):
+    """
+    Ensure dev/mock tokens (Bearer cust_test_1, dev-*, etc.) are rejected with 401
+    immediately when ENVIRONMENT != 'development'.
+    """
+    from core.config import settings
+
+    # Simulate production environment
+    monkeypatch.setattr(settings, "ENV", "production")
+
+    dev_tokens = [
+        "cust_test_1",
+        "worker_elec_1",
+        "token-customer-cust_test_1",
+        "token-worker-worker_elec_1",
+        "dev-user-123",
+        "mock-token-xyz",
+    ]
+
+    for token in dev_tokens:
+        res = client.get("/jobs/job_test_open", headers={"Authorization": f"Bearer {token}"})
+        assert res.status_code == 401, f"Token {token} should have been rejected in production"
+        assert "strictly prohibited" in res.json()["detail"].lower()
+
+
+def test_invalid_auth_scheme_returns_401(client):
+    """
+    Authorization headers using non-Bearer schemes (Basic, Digest, Token) return 401.
+    """
+    res = client.get("/jobs/job_test_open", headers={"Authorization": "Basic dXNlcjpwYXNz"})
+    assert res.status_code == 401
+    assert "bearer" in res.json()["detail"].lower()
