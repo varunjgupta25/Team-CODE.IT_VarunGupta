@@ -89,7 +89,6 @@ def test_settings_cors_resolution_and_wildcard_rejection():
     assert "http://localhost:5173" in s_dev.ALLOWED_ORIGINS
     assert "http://localhost:3000" in s_dev.ALLOWED_ORIGINS
 
-
 def test_endpoints_mounted_on_both_prefixes(client, auth_customer_headers, auth_worker_headers):
     """
     Endpoints respond consistently on both "/" and "/api/" prefixes.
