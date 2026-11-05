@@ -152,6 +152,21 @@ export const api = {
     return apiClient.post(`/admin/verifications/${workerUid}/reject`, { reason });
   },
 
+  async resetVerificationAttempts(workerUid) {
+    if (isMock) return mockStore.resetVerificationAttempts(workerUid);
+    return apiClient.post(`/admin/verifications/${workerUid}/reset_attempts`);
+  },
+
+  async getReports() {
+    if (isMock) return mockStore.getReports();
+    try {
+      const res = await apiClient.get('/admin/reports');
+      return Array.isArray(res) ? res : (res?.data || []);
+    } catch {
+      return [];
+    }
+  },
+
   async getVerificationDocumentBlobUrl(workerUid, docType) {
     if (isMock) return mockStore.getVerificationDocumentBlobUrl(workerUid, docType);
     const response = await apiClient.get(`/admin/verifications/${workerUid}/documents/${docType}`, {

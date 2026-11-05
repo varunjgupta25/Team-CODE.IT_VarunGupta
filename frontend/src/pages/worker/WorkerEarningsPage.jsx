@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Calendar,
   Briefcase,
+  AlertCircle,
 } from 'lucide-react';
 
 export function WorkerEarningsPage() {
@@ -71,6 +72,17 @@ export function WorkerEarningsPage() {
               {rating} / 5.0
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Direct Settlement Disclaimer (Module O) */}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-amber-900">
+        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <div className="space-y-0.5 text-[11px]">
+          <span className="font-extrabold block">Direct Customer Settlements (0% Escrow)</span>
+          <p className="text-amber-800 leading-relaxed">
+            RepairBuddy connects you directly with customers. All earnings shown above are collected directly in cash or UPI at the doorstep upon job confirmation. The platform does not deduct commissions or hold funds in escrow.
+          </p>
         </div>
       </div>
 

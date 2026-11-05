@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useJobStore } from '../../store/jobStore';
 import { useAuthStore } from '../../store/authStore';
@@ -16,6 +16,8 @@ import {
   ShieldCheck,
   ChevronRight,
   MapPin,
+  Search,
+  X,
 } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 
@@ -35,6 +37,7 @@ export function CustomerHome() {
   const navigate = useNavigate();
   const { currentJob } = useJobStore();
   const { user } = useAuthStore();
+  const [searchQuery, setSearchQuery] = useState('');
 
   const hasActiveJob =
     currentJob &&
@@ -46,6 +49,20 @@ export function CustomerHome() {
       JOB_STATUS.AWAITING_CONFIRMATION,
     ].includes(currentJob.status);
 
+  // Filter categories by keyword
+  const filteredCategories = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return CATEGORIES;
+    return CATEGORIES.filter(
+      (cat) =>
+        cat.label.toLowerCase().includes(q) ||
+        cat.id.toLowerCase().includes(q) ||
+        cat.description.toLowerCase().includes(q)
+    );
+  }, [searchQuery]);
+
+  const activeAddress = user?.location?.address || 'Mira Road East, Mumbai';
+
   return (
     <div className="space-y-5 pt-1">
       {/* User Greeting & Hyperlocal Location Header */}
@@ -53,13 +70,20 @@ export function CustomerHome() {
         <div>
           <div className="flex items-center gap-1 text-[11px] font-bold text-slate-500 uppercase tracking-wide">
             <MapPin className="w-3.5 h-3.5 text-brand-600" />
-            <span>Serving Mira Road, Mumbai</span>
+            <span className="truncate max-w-[200px]">{activeAddress}</span>
           </div>
           <h1 className="text-xl font-black text-slate-900 tracking-tight mt-0.5">
             Hey, {user?.name?.split(' ')[0] || 'Neighbor'} 👋
           </h1>
         </div>
-        <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-brand-500 shadow-sm">
+
+        {/* Profile Avatar with clickable navigation */}
+        <button
+          type="button"
+          onClick={() => navigate('/profile')}
+          className="w-10 h-10 rounded-full overflow-hidden border-2 border-brand-500 shadow-sm cursor-pointer hover:opacity-90 active:scale-95 transition"
+          title="View Profile"
+        >
           <img
             src={
               user?.avatarUrl ||
@@ -68,7 +92,7 @@ export function CustomerHome() {
             alt={user?.name || 'User'}
             className="w-full h-full object-cover"
           />
-        </div>
+        </button>
       </div>
 
       {/* Active Job Floating Tracker Banner if there's an active job */}
@@ -85,7 +109,7 @@ export function CustomerHome() {
               </span>
             </div>
             <p className="font-extrabold text-sm capitalize">
-              {currentJob.category} Service ({currentJob.status})
+              {currentJob.category} Service ({currentJob.status.replace('_', ' ')})
             </p>
             <p className="text-[11px] text-white/80 line-clamp-1">
               {currentJob.location?.address || 'Mira Road'}
@@ -116,45 +140,81 @@ export function CustomerHome() {
         <div className="absolute -right-6 -bottom-6 w-32 h-32 rounded-full bg-brand-500/20 blur-2xl pointer-events-none" />
       </div>
 
+      {/* Category Search Bar */}
+      <div className="relative">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search plumbing, electrician, AC repair, cleaning..."
+          className="w-full text-xs py-3 pl-9 pr-8 rounded-2xl border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+        />
+        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
       {/* Category Grid Section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-black text-slate-900 tracking-tight">
-            Choose a Service
+            {searchQuery ? `Search Results (${filteredCategories.length})` : 'Choose a Service'}
           </h2>
-          <span className="text-[11px] font-bold text-brand-600">8 Categories</span>
+          <span className="text-[11px] font-bold text-brand-600">
+            {filteredCategories.length} Categories
+          </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {CATEGORIES.map((cat) => {
-            const IconComponent = ICON_MAP[cat.icon] || Wrench;
-            return (
-              <div
-                key={cat.id}
-                onClick={() => navigate(`/customer/create-job?category=${cat.id}`)}
-                className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:border-brand-500 hover:shadow-md cursor-pointer active:scale-95 transition-all flex flex-col justify-between group min-h-[110px]"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center group-hover:bg-brand-600 group-hover:text-white transition-colors">
-                    <IconComponent className="w-5 h-5" />
+        {filteredCategories.length === 0 ? (
+          <div className="bg-white rounded-2xl p-6 text-center border border-slate-200 text-xs text-slate-500 space-y-2">
+            <p className="font-semibold text-slate-700">No services match &quot;{searchQuery}&quot;</p>
+            <p className="text-[11px]">Try searching for plumber, electrician, carpentry, painting, or AC.</p>
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-brand-600 font-bold text-xs underline pt-1"
+            >
+              Clear search filter
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {filteredCategories.map((cat) => {
+              const IconComponent = ICON_MAP[cat.icon] || Wrench;
+              return (
+                <div
+                  key={cat.id}
+                  onClick={() => navigate(`/customer/create-job?category=${cat.id}`)}
+                  className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:border-brand-500 hover:shadow-md cursor-pointer active:scale-95 transition-all flex flex-col justify-between group min-h-[110px]"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center group-hover:bg-brand-600 group-hover:text-white transition-colors">
+                      <IconComponent className="w-5 h-5" />
+                    </div>
+                    <span className="text-[10px] font-extrabold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                      from {formatCurrency(cat.typicalRate)}
+                    </span>
                   </div>
-                  <span className="text-[10px] font-extrabold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                    from {formatCurrency(cat.typicalRate)}
-                  </span>
-                </div>
 
-                <div className="mt-3">
-                  <h3 className="font-extrabold text-sm text-slate-900 group-hover:text-brand-600 transition-colors">
-                    {cat.label}
-                  </h3>
-                  <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">
-                    {cat.description}
-                  </p>
+                  <div className="mt-3">
+                    <h3 className="font-extrabold text-sm text-slate-900 group-hover:text-brand-600 transition-colors">
+                      {cat.label}
+                    </h3>
+                    <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">
+                      {cat.description}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Trust & Safety Highlights Footer Card */}
@@ -173,8 +233,8 @@ export function CustomerHome() {
             <p className="text-[10px] text-slate-500 font-medium">Average Arrival</p>
           </div>
           <div className="p-2 rounded-xl bg-slate-50 border border-slate-100">
-            <p className="text-base font-black text-slate-900">Fair</p>
-            <p className="text-[10px] text-slate-500 font-medium">Direct Bidding</p>
+            <p className="text-base font-black text-slate-900">Direct</p>
+            <p className="text-[10px] text-slate-500 font-medium">Fair Bidding</p>
           </div>
         </div>
       </div>

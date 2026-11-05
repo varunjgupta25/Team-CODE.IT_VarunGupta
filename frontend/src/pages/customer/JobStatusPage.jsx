@@ -17,6 +17,8 @@ import {
   RefreshCw,
   Star,
   Zap,
+  X,
+  AlertTriangle,
 } from 'lucide-react';
 import { storage } from '../../lib/storage';
 import { api } from '../../api';
@@ -40,6 +42,7 @@ export function JobStatusPage() {
     counterOffer,
     rejectOffer,
     confirmJob,
+    cancelJob,
     startPolling,
     stopPolling,
   } = useJobStore();
@@ -47,6 +50,7 @@ export function JobStatusPage() {
   const [counterInputPrice, setCounterInputPrice] = useState('');
   const [activeCounterOfferId, setActiveCounterOfferId] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [workerDetails, setWorkerDetails] = useState(null);
 
@@ -147,6 +151,20 @@ export function JobStatusPage() {
     }
   };
 
+  // Handle Cancel Job
+  const handleCancelJob = async () => {
+    if (!job.id) return;
+    setIsProcessing(true);
+    try {
+      await cancelJob(job.id);
+      setShowCancelModal(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <div className="space-y-4 pt-1">
       {/* Top Header & Priority SOS Button */}
@@ -176,7 +194,7 @@ export function JobStatusPage() {
         </div>
 
         {/* Step progress pills */}
-        <div className="grid grid-cols-5 gap-1 pt-1">
+        <div className="grid grid-cols-6 gap-1 pt-1">
           {STATUS_STEPS.map((step, idx) => {
             const isPassed = currentStepIdx >= idx;
             const isCurrent = currentStepIdx === idx;
@@ -199,6 +217,46 @@ export function JobStatusPage() {
           })}
         </div>
       </div>
+
+      {/* Cancelled Banner */}
+      {job.status === JOB_STATUS.CANCELLED && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-3xl p-5 text-center space-y-3">
+          <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 mx-auto flex items-center justify-center">
+            <X className="w-7 h-7" />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-slate-900">Request Cancelled</h2>
+            <p className="text-xs text-slate-600 mt-1 max-w-xs mx-auto">
+              This service request has been cancelled. No charges were made.
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/')}
+            className="w-full py-3.5 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xs shadow-md shadow-brand-500/20 active:scale-95 transition"
+          >
+            Book Another Service
+          </button>
+        </div>
+      )}
+
+      {/* Cancel Request Action for Open / Negotiating requests */}
+      {[JOB_STATUS.OPEN, JOB_STATUS.NEGOTIATING].includes(job.status) && (
+        <div className="bg-white rounded-2xl p-3 border border-slate-200 flex items-center justify-between">
+          <div className="text-xs">
+            <span className="font-extrabold text-slate-800 block">Need to change plans?</span>
+            <span className="text-[11px] text-slate-500">You can cancel before an offer is accepted.</span>
+          </div>
+          <button
+            type="button"
+            disabled={isProcessing}
+            onClick={() => setShowCancelModal(true)}
+            className="px-3 py-2 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs active:scale-95 transition flex items-center gap-1 shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>Cancel Request</span>
+          </button>
+        </div>
+      )}
 
       {/* Assigned Worker Card if Accepted, In Progress, or Awaiting Confirmation */}
       {[JOB_STATUS.ACCEPTED, JOB_STATUS.IN_PROGRESS, JOB_STATUS.AWAITING_CONFIRMATION].includes(job.status) && assignedWorker && (
@@ -471,6 +529,39 @@ export function JobStatusPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Cancel Request Confirmation Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-3">
+            <div className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="w-5 h-5" />
+              <h3 className="font-extrabold text-sm text-slate-900">Cancel Request?</h3>
+            </div>
+            <p className="text-xs text-slate-600">
+              Are you sure you want to cancel this service request? Any pending quotes and worker matching will be stopped.
+            </p>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => setShowCancelModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+              >
+                Keep Request
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleCancelJob}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs shadow-md shadow-red-500/20"
+              >
+                {isProcessing ? 'Cancelling...' : 'Yes, Cancel'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

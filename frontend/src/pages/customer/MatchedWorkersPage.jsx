@@ -14,6 +14,8 @@ import {
   Zap,
   Check,
   X,
+  User,
+  Briefcase,
 } from 'lucide-react';
 
 export function MatchedWorkersPage() {
@@ -29,6 +31,7 @@ export function MatchedWorkersPage() {
   } = useJobStore();
 
   const [selectedWorkerForOffer, setSelectedWorkerForOffer] = useState(null);
+  const [inspectingWorker, setInspectingWorker] = useState(null);
   const [customPrice, setCustomPrice] = useState('');
   const [isSubmittingOffer, setIsSubmittingOffer] = useState(false);
 
@@ -167,24 +170,42 @@ export function MatchedWorkersPage() {
               )}
 
               {/* Worker Profile Snapshot */}
-              <div className="flex items-start gap-3">
+              <div
+                onClick={() => setInspectingWorker(worker)}
+                className="flex items-start gap-3 cursor-pointer group"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setInspectingWorker(worker);
+                  }
+                }}
+              >
                 <div className="relative">
                   <img
                     src={worker.avatarUrl}
                     alt={worker.name}
-                    className="w-14 h-14 rounded-2xl object-cover border-2 border-slate-100 shadow-sm"
+                    className="w-14 h-14 rounded-2xl object-cover border-2 border-slate-100 shadow-sm group-hover:border-brand-400 transition"
                   />
                   <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <h3 className="font-black text-sm text-slate-900 truncate">{worker.name}</h3>
-                    {worker.verified && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-blue-100 text-blue-800 flex items-center gap-0.5">
-                        <ShieldCheck className="w-2.5 h-2.5" /> Verified
-                      </span>
-                    )}
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className="font-black text-sm text-slate-900 group-hover:text-brand-600 transition truncate">
+                        {worker.name}
+                      </h3>
+                      {worker.verified && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-blue-100 text-blue-800 flex items-center gap-0.5">
+                          <ShieldCheck className="w-2.5 h-2.5" /> Verified
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-bold text-brand-600 hover:underline">
+                      View Profile &rarr;
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -313,6 +334,152 @@ export function MatchedWorkersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Worker Profile Detail Modal (Module E) */}
+      {inspectingWorker && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            {/* Header with Close */}
+            <div className="flex items-start justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <img
+                  src={inspectingWorker.avatarUrl}
+                  alt={inspectingWorker.name}
+                  className="w-14 h-14 rounded-2xl object-cover border-2 border-brand-500 shadow-sm"
+                />
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h3 className="font-extrabold text-base text-slate-900">{inspectingWorker.name}</h3>
+                    {inspectingWorker.verified && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 flex items-center gap-0.5">
+                        <ShieldCheck className="w-3 h-3 text-emerald-600" /> ID Verified
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-1 text-amber-500 font-extrabold text-xs">
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                      <span>{inspectingWorker.rating}</span>
+                      <span className="text-slate-400 text-[10px] font-normal">
+                        ({inspectingWorker.jobsDone} jobs)
+                      </span>
+                    </div>
+                    <TrustBadge score={inspectingWorker.trustScore} tier={inspectingWorker.trustTier} />
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setInspectingWorker(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Verification & Trust Guarantee */}
+            <div className="bg-emerald-50 rounded-2xl p-3 border border-emerald-200 space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>Verified Service Provider</span>
+              </div>
+              <p className="text-[11px] text-emerald-800">
+                Aadhaar identity and background verification completed. Certified trade professional on RepairBuddy.
+              </p>
+            </div>
+
+            {/* About / Bio */}
+            <div className="space-y-1 text-xs">
+              <span className="font-bold text-slate-800 flex items-center gap-1">
+                <User className="w-3.5 h-3.5 text-brand-600" />
+                About Provider
+              </span>
+              <p className="text-slate-600 text-[11px] leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                {inspectingWorker.about || 'Experienced local professional providing reliable and high-quality repairs with guaranteed punctuality.'}
+              </p>
+            </div>
+
+            {/* Skills & Services */}
+            <div className="space-y-1 text-xs">
+              <span className="font-bold text-slate-800 flex items-center gap-1">
+                <Briefcase className="w-3.5 h-3.5 text-brand-600" />
+                Verified Trades &amp; Rates
+              </span>
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-slate-700 capitalize">
+                    {currentJob?.category || 'General Service'}
+                  </span>
+                  <span className="font-black text-brand-700 text-sm">
+                    {formatCurrency(inspectingWorker.rate)}
+                  </span>
+                </div>
+                {inspectingWorker.skills && Array.isArray(inspectingWorker.skills) && inspectingWorker.skills.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-200/60">
+                    {inspectingWorker.skills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700 text-[10px] font-bold capitalize"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Proximity & ETA */}
+            <div className="bg-slate-50 rounded-2xl p-3 flex items-center justify-between border border-slate-100 text-xs">
+              <div className="flex items-center gap-1.5 text-slate-700">
+                <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                <span>{inspectingWorker.distanceKm} km away</span>
+              </div>
+              <div className="flex items-center gap-1 font-bold text-brand-700">
+                <Clock className="w-3.5 h-3.5" />
+                <span>ETA: ~{inspectingWorker.etaMinutes} min</span>
+              </div>
+            </div>
+
+            {/* Privacy Safeguard Note */}
+            <p className="text-[10px] text-slate-500 italic text-center">
+              Direct phone contact details are securely unlocked upon booking confirmation to protect customer privacy.
+            </p>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isSubmittingOffer}
+                onClick={() => {
+                  const target = inspectingWorker;
+                  setInspectingWorker(null);
+                  setSelectedWorkerForOffer(target);
+                  setCustomPrice(target.rate > 50 ? target.rate - 50 : target.rate);
+                }}
+                className="py-2.5 rounded-xl border border-brand-300 bg-brand-50 hover:bg-brand-100 text-brand-700 font-extrabold text-xs active:scale-95 transition"
+              >
+                Make an Offer
+              </button>
+
+              <button
+                type="button"
+                disabled={isSubmittingOffer}
+                onClick={() => {
+                  const target = inspectingWorker;
+                  setInspectingWorker(null);
+                  handleBookListedRate(target);
+                }}
+                className="py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xs shadow-md shadow-brand-500/20 active:scale-95 transition flex items-center justify-center gap-1"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Book at {formatCurrency(inspectingWorker.rate)}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

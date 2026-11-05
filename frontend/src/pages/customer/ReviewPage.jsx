@@ -1,26 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useJobStore } from '../../store/jobStore';
 import { api } from '../../api';
 import { useToastStore } from '../../store/toastStore';
-import { Star, CheckCircle2, ArrowLeft, Heart, ShieldCheck } from 'lucide-react';
+import { Star, CheckCircle2, ArrowLeft, Heart, ShieldCheck, Check } from 'lucide-react';
 import { storage } from '../../lib/storage';
+
+const COMPLIMENT_TAGS = [
+  'Punctual arrival',
+  'Polite & Professional',
+  'Clean Workmanship',
+  'Fair agreed pricing',
+  'Fast Resolution',
+];
 
 export function ReviewPage() {
   const { jobId } = useParams();
   const navigate = useNavigate();
-  const { currentJob } = useJobStore();
+  const { currentJob, fetchJob } = useJobStore();
 
   const [rating, setRating] = useState(5);
   const [hoverRating, setHoverRating] = useState(5);
   const [comment, setComment] = useState('');
+  const [selectedTags, setSelectedTags] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [loadedJob, setLoadedJob] = useState(currentJob);
+  const [workerDetails, setWorkerDetails] = useState(null);
 
-  const workerId = currentJob?.acceptedWorkerId;
+  useEffect(() => {
+    if (jobId && !currentJob) {
+      fetchJob(jobId).then((res) => {
+        if (res) setLoadedJob(res);
+      }).catch(() => {});
+    }
+  }, [jobId, currentJob, fetchJob]);
+
+  const activeJob = currentJob || loadedJob;
+  const workerId = activeJob?.acceptedWorkerId;
   const allWorkers = storage.get('rb_mock_workers_v1', []);
-  const worker = allWorkers.find((w) => w.uid === workerId) || null;
-  const resolvedWorkerId = worker?.uid || workerId || currentJob?.acceptedWorkerId;
+  const storedWorker = allWorkers.find((w) => w.uid === workerId) || null;
+  const worker = workerDetails || storedWorker;
+  const resolvedWorkerId = worker?.uid || workerId || activeJob?.acceptedWorkerId;
+
+  useEffect(() => {
+    if (resolvedWorkerId && !workerDetails) {
+      api.getWorker(resolvedWorkerId).then((res) => {
+        if (res) setWorkerDetails(res);
+      }).catch(() => {});
+    }
+  }, [resolvedWorkerId, workerDetails]);
+
+  const toggleTag = (tag) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,11 +65,17 @@ export function ReviewPage() {
     }
     setIsSubmitting(true);
     try {
+      const fullComment = [
+        comment.trim(),
+        selectedTags.length > 0 ? `Compliments: ${selectedTags.join(', ')}` : '',
+      ].filter(Boolean).join(' | ');
+
       await api.submitReview({
-        jobId: jobId || currentJob?.id || 'job_test',
+        jobId: jobId || activeJob?.id || 'job_test',
         workerId: resolvedWorkerId,
         rating,
-        comment,
+        comment: fullComment || 'Great service!',
+        tags: selectedTags,
       });
       setIsSubmitted(true);
       useToastStore.getState().success('Review submitted! Worker rating updated.');
@@ -156,20 +197,30 @@ export function ReviewPage() {
           />
         </div>
 
-        {/* Quick Tag Pills */}
-        <div className="space-y-1">
-          <span className="text-[11px] font-semibold text-slate-500">Quick compliments:</span>
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {['Punctual arrival', 'Cleaned up work area', 'Fair agreed pricing', 'Skilled & polite'].map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => setComment((prev) => (prev ? `${prev}, ${tag}` : tag))}
-                className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 active:scale-95 transition"
-              >
-                + {tag}
-              </button>
-            ))}
+        {/* Quick Tag Pills (Module H) */}
+        <div className="space-y-1.5">
+          <span className="text-[11px] font-semibold text-slate-600 block">
+            Tap compliments to highlight exceptional service:
+          </span>
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {COMPLIMENT_TAGS.map((tag) => {
+              const isSelected = selectedTags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => toggleTag(tag)}
+                  className={`text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all flex items-center gap-1 active:scale-95 ${
+                    isSelected
+                      ? 'bg-brand-600 border-brand-600 text-white shadow-sm shadow-brand-500/20'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                  <span>{tag}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 

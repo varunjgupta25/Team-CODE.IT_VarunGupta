@@ -197,6 +197,19 @@ export const useJobStore = create((set, get) => ({
     }
   },
 
+  // POST /jobs/{id}/cancel
+  cancelJob: async (jobId) => {
+    try {
+      const updatedJob = await api.cancelJob(jobId);
+      set({ currentJob: updatedJob });
+      useToastStore.getState().info('Job request has been cancelled.');
+      return updatedJob;
+    } catch (err) {
+      useToastStore.getState().error(err.message || 'Failed to cancel job');
+      throw err;
+    }
+  },
+
   // POST /sos
   triggerSos: async (jobId, location) => {
     try {

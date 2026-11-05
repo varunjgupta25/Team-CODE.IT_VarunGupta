@@ -12,6 +12,10 @@ import {
   LogOut,
   AlertOctagon,
   CheckCircle2,
+  Briefcase,
+  Radio,
+  Star,
+  Navigation,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToastStore } from '../store/toastStore';
@@ -125,17 +129,71 @@ export function ProfilePage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2 text-center">
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                <span className="text-[10px] text-slate-500 block">Primary Trade</span>
-                <span className="font-black text-slate-900 capitalize">
-                  {user.skills?.join(', ') || 'Plumber'}
-                </span>
+            <div className="space-y-3">
+              {/* Trade & Rate Card */}
+              <div className="grid grid-cols-2 gap-2 text-center">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] text-slate-500 block font-medium">Primary Trade</span>
+                  <span className="font-black text-slate-900 capitalize text-sm">
+                    {user.skills?.[0] || 'Tradesperson'}
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] text-slate-500 block font-medium">Standard Base Rate</span>
+                  <span className="font-black text-brand-700 text-sm">
+                    {formatCurrency(user.rates?.[user.skills?.[0]] || user.rate || 350)}
+                  </span>
+                </div>
               </div>
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                <span className="text-[10px] text-slate-500 block">Base Rate</span>
-                <span className="font-black text-brand-700">
-                  {formatCurrency(user.rates?.[user.skills?.[0]] || 350)}
+
+              {/* Skills Tags */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block flex items-center gap-1">
+                  <Briefcase className="w-3 h-3 text-brand-600" /> Registered Trade Skills
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {(user.skills || ['General Maintenance']).map((skill) => (
+                    <span
+                      key={skill}
+                      className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-slate-800 text-[11px] font-bold capitalize"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Coverage & Availability */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-brand-600 shrink-0" />
+                  <div>
+                    <span className="text-[10px] text-slate-500 block font-medium">Dispatch Radius</span>
+                    <span className="font-extrabold text-slate-900 text-xs">
+                      {user.serviceRadiusKm || 5} km Hyperlocal
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-2">
+                  <Radio className={`w-4 h-4 shrink-0 ${user.isAvailableNow !== false ? 'text-emerald-600 animate-pulse' : 'text-slate-400'}`} />
+                  <div>
+                    <span className="text-[10px] text-slate-500 block font-medium">Status</span>
+                    <span className={`font-extrabold text-xs ${user.isAvailableNow !== false ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      {user.isAvailableNow !== false ? 'Online & Available' : 'Offline'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Jobs & Rating Snapshot */}
+              <div className="flex items-center justify-between p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-xs">
+                <div className="flex items-center gap-1.5">
+                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                  <span className="font-bold text-slate-900">{user.rating || 4.8} Rating</span>
+                </div>
+                <span className="text-slate-600 text-[11px] font-medium">
+                  {user.jobsDone || 0} Jobs Completed
                 </span>
               </div>
             </div>

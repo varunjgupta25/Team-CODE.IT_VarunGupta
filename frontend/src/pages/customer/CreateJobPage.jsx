@@ -4,6 +4,7 @@ import { useJobStore } from '../../store/jobStore';
 import { useAuthStore } from '../../store/authStore';
 import { CATEGORIES, DEFAULT_COORDINATES } from '../../types';
 import { MapPicker } from '../../components/map/MapPicker';
+import { useToastStore } from '../../store/toastStore';
 import { ArrowLeft, Clock, Calendar, Sparkles } from 'lucide-react';
 
 export function CreateJobPage() {
@@ -30,6 +31,17 @@ export function CreateJobPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!description.trim()) {
+      useToastStore.getState().error('Please provide a brief problem description');
+      return;
+    }
+
+    if (mode === 'scheduled' && !scheduledDate) {
+      useToastStore.getState().error('Please select a scheduled date and time');
+      return;
+    }
+
+    if (budget && Number(budget) < 100) {
+      useToastStore.getState().error('Minimum customer budget is ₹100');
       return;
     }
 
@@ -38,11 +50,11 @@ export function CreateJobPage() {
       const resolvedPhone = (customerPhone || user?.phone || '').trim();
 
       const jobData = {
-        customerId: user?.uid || `cust_${Date.now()}`,
+        customerId: user?.uid,
         customerName: resolvedName,
         customerPhone: resolvedPhone,
         category,
-        description,
+        description: description.trim(),
         mode,
         scheduledAt: mode === 'scheduled' ? scheduledDate : null,
         budget: budget ? Number(budget) : null,

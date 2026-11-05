@@ -400,6 +400,20 @@ export const mockStore = {
     return job;
   },
 
+  // POST /jobs/{id}/cancel
+  async cancelJob(jobId) {
+    await delay();
+    const jobs = getJobs();
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job) throw new Error('Job not found');
+
+    job.status = JOB_STATUS.CANCELLED;
+    job.cancelledAt = new Date().toISOString();
+    job.updatedAt = new Date().toISOString();
+    saveJobs(jobs);
+    return job;
+  },
+
   // POST /reviews
   async submitReview({ jobId, workerId, rating, comment }) {
     await delay();
@@ -607,6 +621,27 @@ export const mockStore = {
       verified: false,
       reason,
     };
+  },
+
+  // POST /admin/verifications/{uid}/reset_attempts
+  async resetVerificationAttempts(workerUid) {
+    await delay(120);
+    const workers = getWorkers();
+    const worker = workers.find((w) => w.uid === workerUid || (workerUid === 'worker_plumber_unverified' && w.uid === 'w_plumb_unverified') || (workerUid === 'w_plumb_unverified' && w.uid === 'worker_plumber_unverified'));
+    if (worker) {
+      worker.attemptCount = 0;
+      worker.rejectionCount = 0;
+      worker.rejectionReason = null;
+      worker.verificationStatus = 'pending';
+      saveWorkers(workers);
+    }
+    return { success: true, workerId: workerUid, attemptCount: 0, status: 'pending' };
+  },
+
+  // GET /admin/reports or platform reports helper
+  async getReports() {
+    await delay(100);
+    return storage.get(REPORTS_KEY, []);
   },
 
   async getVerificationDocumentBlobUrl(workerUid, docType) {
