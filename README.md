@@ -47,7 +47,7 @@ repair-buddy/
 │   ├── verify_live_flow.py      # Live worker match & verification flow check
 │   ├── verify_verification_security.py # Worker registration & admin Aadhaar verification check
 │   └── set_admin.py             # Grant admin role via Firebase custom claim (production use)
-├── tests/                       # 108 Pytest test cases covering all edge cases
+├── tests/                       # 125 Pytest test cases covering all edge cases
 ├── frontend/                    # React 19 + Vite + Tailwind CSS SPA
 │   ├── src/                     # React source (pages, components, api client, contexts)
 │   ├── vercel.json              # Vercel SPA catch-all rewrite rule
@@ -91,7 +91,7 @@ npm run dev
 ## 4. Run Automated Test Suites
 
 ```bash
-# Run all 108 backend unit and integration tests
+# Run all 125 backend unit and integration tests
 pytest -v
 
 # Run the full end-to-end verification against the local server
