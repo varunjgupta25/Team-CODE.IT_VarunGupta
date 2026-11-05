@@ -82,6 +82,30 @@ export const api = {
     return apiClient.post('/sos', payload);
   },
 
+  async setEmergencyContact(payload) {
+    if (isMock) return mockStore.setEmergencyContact(payload);
+    return apiClient.put('/users/me/emergency-contact', payload);
+  },
+
+  async getEmergencyContact() {
+    if (isMock) return mockStore.getEmergencyContact();
+    try {
+      return await apiClient.get('/users/me/emergency-contact');
+    } catch {
+      return null;
+    }
+  },
+
+  async getAdminSosAlerts() {
+    if (isMock) return mockStore.getAdminSosAlerts();
+    try {
+      const res = await apiClient.get('/admin/sos');
+      return Array.isArray(res) ? res : (res?.data || []);
+    } catch {
+      return [];
+    }
+  },
+
   async reportUser(payload) {
     if (isMock) return mockStore.reportUser(payload);
     return apiClient.post('/reports', payload);

@@ -430,17 +430,63 @@ export const mockStore = {
 
   // POST /sos
   async triggerSos({ jobId, location }) {
-    await delay(150);
+    await delay(200);
+    const sessionUser = storage.get('rb_auth_user_session', null);
+    const userId = sessionUser?.uid || 'cust_priya';
     const alerts = storage.get(SOS_KEY, []);
+    const contact = storage.get('rb_mock_emergency_contact', null);
+
+    const lat = location?.lat || 19.2812;
+    const lng = location?.lng || 72.8697;
+    const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+
+    const recipients = [];
+    if (contact && contact.phone) {
+      recipients.push({
+        target: 'emergency_contact',
+        phone: contact.phone,
+        channel: 'sms',
+        status: 'sent',
+      });
+    }
+    recipients.push({
+      target: 'ops',
+      phone: '+919800000000',
+      channel: 'sms',
+      status: 'sent',
+    });
+
+    const status = contact ? 'notified' : 'partial';
+
     const alert = {
       id: `sos_${Date.now()}`,
       jobId,
-      location: location || { lat: 19.2812, lng: 72.8697 },
-      timestamp: new Date().toISOString(),
+      userId,
+      location: { lat, lng },
+      createdAt: new Date().toISOString(),
+      status,
+      recipients,
+      mapsUrl,
     };
-    alerts.push(alert);
+    alerts.unshift(alert);
     storage.set(SOS_KEY, alerts);
-    return { success: true, alertId: alert.id, timestamp: alert.timestamp };
+    return alert;
+  },
+
+  async setEmergencyContact(contact) {
+    await delay(100);
+    storage.set('rb_mock_emergency_contact', contact);
+    return { status: 'success', emergencyContact: contact };
+  },
+
+  async getEmergencyContact() {
+    await delay(80);
+    return storage.get('rb_mock_emergency_contact', null);
+  },
+
+  async getAdminSosAlerts() {
+    await delay(100);
+    return storage.get(SOS_KEY, []);
   },
 
   // POST /reports

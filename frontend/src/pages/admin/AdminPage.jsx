@@ -30,6 +30,8 @@ export function AdminPage() {
   const [pendingList, setPendingList] = useState([]);
   const [isLoadingPending, setIsLoadingPending] = useState(false);
   const [recentlyApproved, setRecentlyApproved] = useState([]);
+  const [sosAlerts, setSosAlerts] = useState([]);
+  const [isLoadingSos, setIsLoadingSos] = useState(false);
 
   // Inspection Modal state
   const [activeReviewWorker, setActiveReviewWorker] = useState(null);
@@ -61,6 +63,13 @@ export function AdminPage() {
     }).catch(() => {
       if (active) setPendingList([]);
     });
+
+    api.getAdminSosAlerts().then((alerts) => {
+      if (active) setSosAlerts(Array.isArray(alerts) ? alerts : []);
+    }).catch(() => {
+      if (active) setSosAlerts([]);
+    });
+
     return () => {
       active = false;
     };
@@ -430,36 +439,68 @@ export function AdminPage() {
         </div>
       )}
 
-      {/* Recently Approved in Session */}
-      <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-emerald-600" />
-          <h2 className="font-extrabold text-sm text-slate-900">Recently Approved (Session)</h2>
+      {/* Recent SOS Emergency Alerts (Fix 4: Admin minimal UI row) */}
+      <div className="bg-white rounded-3xl p-5 border border-red-200 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-600" />
+            <h2 className="font-extrabold text-sm text-slate-900">Emergency SOS Dispatch Log</h2>
+            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-bold">
+              {sosAlerts.length}
+            </span>
+          </div>
+          <button
+            onClick={() => api.getAdminSosAlerts().then(setSosAlerts)}
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+            title="Refresh SOS Log"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        {recentlyApproved.length > 0 ? (
+        {sosAlerts.length > 0 ? (
           <div className="space-y-2">
-            {recentlyApproved.map((item, idx) => (
+            {sosAlerts.map((alert) => (
               <div
-                key={`${item.workerId}-${idx}`}
-                className="p-2.5 rounded-2xl border border-emerald-100 bg-emerald-50/50 flex items-center justify-between text-xs"
+                key={alert.id}
+                className="p-3 rounded-2xl border border-slate-100 bg-slate-50/70 flex items-center justify-between text-xs"
               >
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  <div>
-                    <span className="font-bold text-slate-900 font-mono text-[11px]">{item.workerId}</span>
-                    <span className="text-[10px] text-slate-400 block">At {item.approvedAt}</span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 font-mono text-[11px]">{alert.id}</span>
+                    <span
+                      className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                        alert.status === 'notified'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : alert.status === 'partial'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {alert.status}
+                    </span>
                   </div>
+                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                    User: {alert.userId} • Job: {alert.jobId || 'Standalone'} • {alert.recipients?.length || 0} notified
+                  </p>
                 </div>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 uppercase">
-                  Verified
-                </span>
+
+                {alert.mapsUrl && (
+                  <a
+                    href={alert.mapsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-2.5 py-1 rounded-xl bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold hover:bg-red-100"
+                  >
+                    View Map
+                  </a>
+                )}
               </div>
             ))}
           </div>
         ) : (
           <p className="text-xs text-slate-400 italic text-center py-2">
-            No verifications approved in this session yet.
+            No emergency SOS alerts logged in this session.
           </p>
         )}
       </div>

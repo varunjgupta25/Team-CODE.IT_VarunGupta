@@ -1,14 +1,18 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { ROLES } from '../types';
 import { computeTrust, formatCurrency } from '../lib/utils';
 import { TrustBadge } from '../components/common/TrustBadge';
 import { VerificationCard } from '../components/worker/VerificationCard';
+import { api } from '../api';
 import {
   Phone,
   MapPin,
   ShieldCheck,
   LogOut,
+  AlertOctagon,
+  UserPlus,
+  CheckCircle2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToastStore } from '../store/toastStore';
@@ -17,6 +21,24 @@ export function ProfilePage() {
   const { user, role, logout } = useAuthStore();
   const navigate = useNavigate();
 
+  const [emergencyContact, setEmergencyContact] = useState(null);
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [isSavingContact, setIsSavingContact] = useState(false);
+
+  useEffect(() => {
+    api.getEmergencyContact().then((c) => {
+      if (c) {
+        setEmergencyContact(c);
+        setContactName(c.name || '');
+        setContactPhone(c.phone || '');
+      }
+    }).catch(() => {
+      setEmergencyContact(null);
+    });
+  }, []);
+
   if (!user) {
     navigate('/login');
     return null;
@@ -24,6 +46,27 @@ export function ProfilePage() {
 
   const isCustomer = role === ROLES.CUSTOMER;
   const trust = role === ROLES.WORKER ? computeTrust(user) : null;
+
+  const handleSaveContact = async (e) => {
+    e.preventDefault();
+    if (!contactName.trim() || !contactPhone.trim()) return;
+
+    setIsSavingContact(true);
+    try {
+      const res = await api.setEmergencyContact({
+        name: contactName.trim(),
+        phone: contactPhone.trim(),
+      });
+      const saved = res?.emergencyContact || { name: contactName.trim(), phone: contactPhone.trim() };
+      setEmergencyContact(saved);
+      setIsEditingContact(false);
+      useToastStore.getState().success('Emergency contact saved successfully!');
+    } catch (err) {
+      useToastStore.getState().error(err.message || 'Failed to save contact. Please enter valid +91 10-digit number.');
+    } finally {
+      setIsSavingContact(false);
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -97,6 +140,77 @@ export function ProfilePage() {
                 </span>
               </div>
             </div>
+          )}
+        </div>
+
+        {/* Emergency SOS Contact Section */}
+        <div className="bg-red-50/70 border border-red-200 rounded-2xl p-4 space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertOctagon className="w-4 h-4 text-red-600" />
+              <span className="font-extrabold text-slate-900">Emergency SOS Contact</span>
+            </div>
+            {!isEditingContact && (
+              <button
+                onClick={() => setIsEditingContact(true)}
+                className="text-[11px] text-red-700 font-bold underline"
+              >
+                {emergencyContact ? 'Edit' : '+ Add Contact'}
+              </button>
+            )}
+          </div>
+
+          {emergencyContact && !isEditingContact ? (
+            <div className="flex items-center justify-between pt-1">
+              <div>
+                <span className="font-bold text-slate-800 text-xs block">{emergencyContact.name}</span>
+                <span className="text-slate-500 font-mono text-[11px]">{emergencyContact.phone}</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> Active
+              </span>
+            </div>
+          ) : !isEditingContact ? (
+            <p className="text-[11px] text-slate-600">
+              No emergency contact set. Set an emergency contact now so they receive SMS with live GPS in an emergency.
+            </p>
+          ) : null}
+
+          {isEditingContact && (
+            <form onSubmit={handleSaveContact} className="space-y-2 pt-2 border-t border-red-100">
+              <input
+                type="text"
+                required
+                placeholder="Contact Name (e.g. Papa / Spouse)"
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                className="w-full text-xs p-2 rounded-xl border border-slate-200 bg-white"
+              />
+              <input
+                type="tel"
+                required
+                placeholder="10-digit Mobile (+91 format)"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                className="w-full text-xs p-2 rounded-xl border border-slate-200 bg-white"
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={isSavingContact}
+                  className="flex-1 py-2 rounded-xl bg-red-600 text-white font-bold text-xs shadow-sm hover:bg-red-700"
+                >
+                  {isSavingContact ? 'Saving...' : 'Save Emergency Contact'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingContact(false)}
+                  className="px-3 py-2 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           )}
         </div>
 

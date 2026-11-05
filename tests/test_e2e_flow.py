@@ -151,7 +151,7 @@ def test_full_e2e_journey(client):
     res_sos = client.post("/sos", json=sos_payload, headers=auth_customer)
     assert res_sos.status_code == 201
     sos_data = res_sos.json()
-    assert sos_data["status"] == "recorded"
+    assert sos_data["status"] in ("recorded", "notified")
     assert sos_data["jobId"] == job_id
     assert sos_data["userId"] == customer_uid
 

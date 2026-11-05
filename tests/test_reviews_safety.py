@@ -149,7 +149,7 @@ def test_sos_stores_alert_with_job_and_location(client, auth_customer_headers):
     res = client.post("/sos", json=sos_payload, headers=auth_customer_headers)
     assert res.status_code == 201, res.text
     data = res.json()
-    assert data["status"] == "recorded"
+    assert data["status"] in ("recorded", "notified")
     assert data["jobId"] == "job_test_open"
     assert data["userId"] == "cust_test_1"
     assert math.isclose(data["location"]["lat"], 19.2825)

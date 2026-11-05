@@ -6,6 +6,25 @@ All notable changes to RepairBuddy are documented here.
 
 ## [Unreleased] — 2026-11-05
 
+### Safety & Emergency Alerting — Honest SOS Dispatch & Notifications (Fix 4)
+
+**Problem:** SOS was recorded only as static rows with `status="recorded"` with no notifications sent to contacts or operations, no emergency contact collection, no authorization check, and no rate limiting.
+
+**Fix:**
+- `services/notification_provider.py` *(new)* — Extensible `NotificationProvider` interface with `ConsoleProvider` (for development & testing) and `TwilioProvider` (SMS and WhatsApp with retry logic).
+- `models/sos.py` — `EmergencyContact` with strict E.164 Indian mobile number validation (`+91XXXXXXXXXX`); `SOSRecipientResult` and `SOSResponse` reflecting honest delivery states (`notified`, `partial`, `failed`).
+- `services/sos_service.py` —
+  - Participant authorization: restricted strictly to the job's customer or accepted worker (403 for unauthorized callers).
+  - Rate limiting: max 3 SOS alerts per hour per user (429).
+  - Deduplication: duplicate alert within 60s for the same job returns existing record without re-sending.
+  - Delivery with retries: persists SOS record first, then alerts emergency contact and `OPS_ALERT_PHONE` with up to 2 retries.
+  - Honest delivery status computed: `notified` (all succeeded), `partial` (some succeeded), `failed` (none succeeded / unconfigured).
+- `routers/sos.py` — Added `PUT/POST /users/me/emergency-contact`, `GET /users/me/emergency-contact`, and admin-only `GET /admin/sos`.
+- Frontend: `SosButton.jsx` warns if no emergency contact is set with inline add form; never claims help is coming unless status is `notified`; displays failure/partial warning with tap-to-call 112 button. `ProfilePage.jsx` includes emergency contact management. `AdminPage.jsx` includes emergency SOS dispatch log. Mock mode in `mockStore.js` and `api/index.js` mirrored.
+- Tests: 7 new pytest cases in `tests/test_sos_alerts.py` covering contact validation, notification success, provider failure, unauthorized caller rejection, duplicate detection, rate limiting, and admin SOS view.
+
+---
+
 ### Security & Compliance — Worker ID & Selfie Verification (Fix 3)
 
 **Problem:** Worker verification previously stored only docType + last-4 digits with no real document upload, no selfie verification, no reject-with-reason, and `/admin/verifications/pending` leaked full worker documents.

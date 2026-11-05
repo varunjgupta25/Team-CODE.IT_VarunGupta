@@ -47,5 +47,13 @@ class Settings(BaseSettings):
     PRIVATE_STORAGE_PATH: str = "data/private_uploads"
     FIREBASE_STORAGE_BUCKET: str = ""
 
+    # SOS Alerting & Notification Provider Configuration
+    OPS_ALERT_PHONE: str = "+919800000000"
+    NOTIFICATION_PROVIDER: str = "console"  # "console" | "twilio"
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM_PHONE: str = ""
+    TWILIO_WHATSAPP_FROM: str = ""
+
 
 settings = Settings()
