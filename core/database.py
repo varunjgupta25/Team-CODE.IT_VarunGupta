@@ -52,16 +52,26 @@ class FirestoreDB:
 
     def _init_real_firebase(self):
         try:
-            if settings.FIREBASE_CREDENTIALS_PATH and os.path.exists(settings.FIREBASE_CREDENTIALS_PATH):
+            cred = None
+            if settings.FIREBASE_CREDENTIALS_JSON and settings.FIREBASE_CREDENTIALS_JSON.strip():
+                try:
+                    cred_dict = json.loads(settings.FIREBASE_CREDENTIALS_JSON)
+                    cred = credentials.Certificate(cred_dict)
+                except Exception as exc:
+                    logger.warning("Failed to parse FIREBASE_CREDENTIALS_JSON: %s", exc)
+            elif settings.FIREBASE_CREDENTIALS_PATH and os.path.exists(settings.FIREBASE_CREDENTIALS_PATH):
                 cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
+
+            if cred:
                 if not firebase_admin._apps:
                     firebase_admin.initialize_app(cred)
                 self._firestore_client = firestore.client()
                 self._use_mock = False
             else:
-                # Fallback to local store if file does not exist
+                # Fallback to local store if credentials not found
                 self._use_mock = True
-        except Exception:
+        except Exception as exc:
+            logger.warning("Firebase initialization error: %s. Using mock store.", exc)
             self._use_mock = True
 
     def _load_local_store(self):

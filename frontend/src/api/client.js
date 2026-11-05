@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getFreshIdToken } from '../lib/firebase';
 
 // Resolve and sanitize backend API Base URL
 let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://repair-buddy.onrender.com/api';
@@ -13,9 +14,11 @@ if (typeof rawBaseUrl === 'string') {
       .replace(/your-render-service/g, 'repair-buddy')
       .replace(/<[^>]+>/g, 'repair-buddy');
   }
-  // Ensure protocol
+  // Ensure protocol (unless relative URL like /api)
   if (!rawBaseUrl.startsWith('http://') && !rawBaseUrl.startsWith('https://')) {
-    rawBaseUrl = `https://${rawBaseUrl}`;
+    if (!rawBaseUrl.startsWith('/')) {
+      rawBaseUrl = `https://${rawBaseUrl}`;
+    }
   }
   // Ensure /api suffix
   if (!rawBaseUrl.endsWith('/api')) {
@@ -31,10 +34,18 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
-// Attach Firebase ID token if present
+// Attach fresh Firebase ID token if present (auto-refreshed per request)
 apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('rb_auth_token');
+  async (config) => {
+    let token = null;
+    try {
+      token = await getFreshIdToken();
+    } catch {
+      token = null;
+    }
+    if (!token) {
+      token = localStorage.getItem('rb_auth_token');
+    }
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

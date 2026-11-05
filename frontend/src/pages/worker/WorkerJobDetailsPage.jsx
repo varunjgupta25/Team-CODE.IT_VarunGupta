@@ -155,6 +155,8 @@ export function WorkerJobDetailsPage() {
             className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase ${
               job.status === JOB_STATUS.COMPLETED
                 ? 'bg-emerald-100 text-emerald-800'
+                : job.status === JOB_STATUS.AWAITING_CONFIRMATION
+                ? 'bg-blue-100 text-blue-800'
                 : job.status === JOB_STATUS.IN_PROGRESS
                 ? 'bg-purple-100 text-purple-800 animate-pulse'
                 : job.status === JOB_STATUS.ACCEPTED
@@ -189,8 +191,8 @@ export function WorkerJobDetailsPage() {
           </div>
         </div>
 
-        {/* Customer phone & direct call if accepted/in-progress */}
-        {[JOB_STATUS.ACCEPTED, JOB_STATUS.IN_PROGRESS].includes(job.status) && (
+        {/* Customer phone & direct call if accepted, in-progress, awaiting confirmation, or completed */}
+        {[JOB_STATUS.ACCEPTED, JOB_STATUS.IN_PROGRESS, JOB_STATUS.AWAITING_CONFIRMATION, JOB_STATUS.COMPLETED].includes(job.status) && (
           <>
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -283,6 +285,23 @@ export function WorkerJobDetailsPage() {
             <Check className="w-4 h-4 stroke-[3]" />
             <span>MARK COMPLETE &amp; COLLECT CASH</span>
           </button>
+        </div>
+      )}
+
+      {/* Stage: Awaiting Customer Confirmation */}
+      {job.status === JOB_STATUS.AWAITING_CONFIRMATION && (
+        <div className="bg-blue-50 border-2 border-blue-400 rounded-3xl p-5 space-y-3">
+          <div className="flex items-center gap-2 text-blue-900 font-extrabold text-xs">
+            <Clock className="w-4 h-4 text-blue-600 animate-spin" />
+            <span>Waiting for customer confirmation</span>
+          </div>
+          <p className="text-xs text-slate-600">
+            You marked this job as done. Once the customer verifies the repair and confirms completion, your completed jobs count will automatically update.
+          </p>
+          <div className="bg-white rounded-xl p-3 border border-blue-200 text-xs text-slate-700">
+            <span className="font-bold text-slate-900">Total Agreed:</span>{' '}
+            <span className="font-extrabold text-emerald-600">{formatCurrency(job.finalPrice)}</span> (Cash on completion)
+          </div>
         </div>
       )}
 

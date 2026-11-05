@@ -3,6 +3,7 @@ export const JOB_STATUS = {
   NEGOTIATING: 'negotiating',
   ACCEPTED: 'accepted',
   IN_PROGRESS: 'in_progress',
+  AWAITING_CONFIRMATION: 'awaiting_confirmation',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
 };

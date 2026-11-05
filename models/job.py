@@ -28,12 +28,15 @@ class JobResponse(BaseModel):
     description: str
     location: JobLocation
     budget: Optional[float] = None
-    status: str = Field("open", description="open, negotiating, accepted, in_progress, completed, cancelled")
+    status: str = Field("open", description="open, negotiating, accepted, in_progress, awaiting_confirmation, completed, cancelled")
     acceptedWorkerId: Optional[str] = None
     finalPrice: Optional[float] = None
     createdAt: str
     mode: Optional[str] = "on-demand"
     scheduledAt: Optional[str] = None
+    startedAt: Optional[str] = None
+    completedByWorkerAt: Optional[str] = None
+    completedAt: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

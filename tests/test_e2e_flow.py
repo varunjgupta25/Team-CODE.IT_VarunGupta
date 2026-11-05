@@ -109,13 +109,21 @@ def test_full_e2e_journey(client):
     assert res_start.status_code == 200
     assert res_start.json()["status"] == "in_progress"
 
-    # 8. Worker completes the job
+    # 8. Worker completes the job -> moves to awaiting_confirmation
     worker_before = db.get_document("workers", worker_uid)
     jobs_done_before = int(worker_before.get("jobsDone", 0))
 
     res_comp = client.post(f"/jobs/{job_id}/complete", headers=auth_worker)
     assert res_comp.status_code == 200
-    assert res_comp.json()["status"] == "completed"
+    assert res_comp.json()["status"] == "awaiting_confirmation"
+
+    # jobsDone not incremented until customer confirms
+    assert int(db.get_document("workers", worker_uid)["jobsDone"]) == jobs_done_before
+
+    # Customer confirms completion -> moves to completed
+    res_conf = client.post(f"/jobs/{job_id}/confirm", headers=auth_customer)
+    assert res_conf.status_code == 200
+    assert res_conf.json()["status"] == "completed"
 
     worker_after = db.get_document("workers", worker_uid)
     assert int(worker_after["jobsDone"]) == jobs_done_before + 1

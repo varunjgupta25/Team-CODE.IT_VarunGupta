@@ -2,6 +2,14 @@ import { create } from 'zustand';
 import { storage } from '../lib/storage';
 import { ROLES } from '../types';
 import { api } from '../api';
+import {
+  isFirebaseConfigured,
+  setupRecaptcha,
+  sendPhoneOtp,
+  verifyPhoneOtp,
+  signOutFirebase,
+  getFreshIdToken,
+} from '../lib/firebase';
 
 const AUTH_USER_KEY = 'rb_auth_user_session';
 const AUTH_ROLE_KEY = 'rb_auth_role_session';
@@ -14,7 +22,61 @@ export const useAuthStore = create((set, get) => ({
   role: initialRole,
   isAvailableNow: initialUser?.isAvailableNow ?? true,
   pendingOtpPhone: null,
+  confirmationResult: null,
   generatedOtp: null,
+
+  // Firebase Phone Auth: Request OTP via SMS (or mock fallback if unconfigured)
+  requestPhoneOtp: async (phoneNumber, containerId = 'recaptcha-container') => {
+    if (isFirebaseConfigured()) {
+      try {
+        const verifier = setupRecaptcha(containerId);
+        const confirmation = await sendPhoneOtp(phoneNumber, verifier);
+        set({
+          pendingOtpPhone: phoneNumber,
+          confirmationResult: confirmation,
+          generatedOtp: null,
+        });
+        return { isFirebase: true, confirmation };
+      } catch (err) {
+        console.error('[Auth] Firebase sendPhoneOtp failed:', err);
+        throw err;
+      }
+    }
+
+    // Fallback for offline mock development
+    const fakeOtp = '1234';
+    set({
+      pendingOtpPhone: phoneNumber,
+      confirmationResult: null,
+      generatedOtp: fakeOtp,
+    });
+    return { isFirebase: false, otp: fakeOtp };
+  },
+
+  // Firebase Phone Auth: Confirm OTP and resolve user credentials
+  confirmPhoneOtp: async (otpCode) => {
+    const { confirmationResult } = get();
+    if (confirmationResult && isFirebaseConfigured()) {
+      const userCred = await verifyPhoneOtp(confirmationResult, otpCode);
+      const idToken = await userCred.user.getIdToken();
+      localStorage.setItem('rb_auth_token', idToken);
+      return userCred.user;
+    }
+
+    // Mock verification fallback
+    const { generatedOtp } = get();
+    if (otpCode === (generatedOtp || '1234')) {
+      return { uid: `mock_user_${Date.now()}` };
+    }
+    throw new Error('Invalid OTP code. Please try again.');
+  },
+
+  // Legacy helper for test compatibility
+  sendOtp: (phone) => {
+    const fakeOtp = '1234';
+    set({ pendingOtpPhone: phone, generatedOtp: fakeOtp });
+    return fakeOtp;
+  },
 
   // Login as Customer (Strict role enforcement)
   loginAsCustomer: async (userData) => {
@@ -33,12 +95,13 @@ export const useAuthStore = create((set, get) => ({
 
     storage.set(AUTH_ROLE_KEY, ROLES.CUSTOMER);
     storage.set(AUTH_USER_KEY, customerUser);
-    localStorage.setItem('rb_auth_token', `token-customer-${customerUser.uid}`);
+    if (!isFirebaseConfigured()) {
+      localStorage.setItem('rb_auth_token', customerUser.uid);
+    }
 
-    // Dynamic backend customer registration
+    // Register with backend using fresh Bearer token
     try {
       await api.registerCustomer({
-        uid: customerUser.uid,
         name: customerUser.name,
         phone: customerUser.phone,
         location: customerUser.location,
@@ -52,6 +115,7 @@ export const useAuthStore = create((set, get) => ({
       role: ROLES.CUSTOMER,
       isAvailableNow: false,
       pendingOtpPhone: null,
+      confirmationResult: null,
       generatedOtp: null,
     });
     return customerUser;
@@ -59,30 +123,25 @@ export const useAuthStore = create((set, get) => ({
 
   // Login as Worker (Strict role enforcement, dynamic registration)
   loginAsWorker: async (workerData) => {
-    // If specific UID passed (e.g. from quick login or existing worker), use it;
-    // otherwise generate a unique UID for dynamically registered worker
-    const isExplicitlyVerified = workerData?.verified === true || workerData?.uid === 'worker_plumber_1' || workerData?.uid === 'w_plumb_1';
     const isNewRegistration = !workerData?.uid;
-    const workerUid = workerData?.uid || (isExplicitlyVerified ? 'worker_plumber_1' : `worker_${Date.now()}`);
+    const workerUid = workerData?.uid || `worker_${Date.now()}`;
     const skills = workerData?.skills && workerData.skills.length > 0 ? workerData.skills : ['plumber'];
     const rates = workerData?.rates || { [skills[0]]: 350 };
-    const isVerified = isExplicitlyVerified;
-    const vStatus = isVerified ? 'approved' : (workerData?.verificationStatus || 'unverified');
 
     const workerUser = {
       uid: workerUid,
-      name: workerData?.name || (isVerified ? 'Ramesh Kumar (Verified)' : 'Worker'),
-      phone: workerData?.phone || (isVerified ? '+91 91101 00001' : '+91 91101 00005'),
+      name: workerData?.name || 'Worker',
+      phone: workerData?.phone || '',
       skills,
       rates,
       role: ROLES.WORKER,
       isAvailableNow: true,
-      verified: isVerified,
-      verificationStatus: vStatus,
-      rating: workerData?.rating ?? 4.5,
+      verified: workerData?.verified ?? false,
+      verificationStatus: workerData?.verificationStatus || (workerData?.verified ? 'approved' : 'unverified'),
+      rating: workerData?.rating ?? 5.0,
       jobsDone: workerData?.jobsDone ?? 0,
-      trustScore: isVerified ? 90.0 : 60.0,
-      trustBadge: isVerified ? 'Gold' : 'Bronze',
+      trustScore: workerData?.trustScore ?? 60.0,
+      trustBadge: workerData?.trustBadge ?? 'Bronze',
       avatarUrl: workerData?.avatarUrl || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80',
       location: workerData?.location || {
         lat: 19.2812,
@@ -93,19 +152,29 @@ export const useAuthStore = create((set, get) => ({
 
     storage.set(AUTH_ROLE_KEY, ROLES.WORKER);
     storage.set(AUTH_USER_KEY, workerUser);
-    localStorage.setItem('rb_auth_token', `token-worker-${workerUser.uid}`);
+    if (!isFirebaseConfigured()) {
+      localStorage.setItem('rb_auth_token', workerUser.uid);
+    }
 
-    // If dynamically registering a new worker, register with backend
+    // If registering a new worker, submit registration with backend
     if (isNewRegistration) {
       try {
-        await api.registerWorker({
-          uid: workerUser.uid,
+        const created = await api.registerWorker({
           name: workerUser.name,
           phone: workerUser.phone,
           skills: workerUser.skills,
           rates: workerUser.rates,
           location: workerUser.location,
         });
+        if (created) {
+          workerUser.verified = Boolean(created.verified);
+          workerUser.verificationStatus = created.verificationStatus || 'unverified';
+          workerUser.rating = created.rating ?? 5.0;
+          workerUser.jobsDone = created.jobsDone ?? 0;
+          workerUser.trustScore = created.trustScore ?? 60.0;
+          workerUser.trustBadge = created.trustBadge ?? 'Bronze';
+          storage.set(AUTH_USER_KEY, workerUser);
+        }
       } catch (err) {
         console.warn('Worker sync to backend:', err);
       }
@@ -118,6 +187,8 @@ export const useAuthStore = create((set, get) => ({
           workerUser.verificationStatus = existing.verificationStatus || (existing.verified ? 'approved' : 'unverified');
           if (existing.trustScore !== undefined) workerUser.trustScore = existing.trustScore;
           if (existing.trustBadge) workerUser.trustBadge = existing.trustBadge;
+          if (existing.jobsDone !== undefined) workerUser.jobsDone = existing.jobsDone;
+          if (existing.rating !== undefined) workerUser.rating = existing.rating;
           storage.set(AUTH_USER_KEY, workerUser);
         }
       } catch {
@@ -130,6 +201,7 @@ export const useAuthStore = create((set, get) => ({
       role: ROLES.WORKER,
       isAvailableNow: true,
       pendingOtpPhone: null,
+      confirmationResult: null,
       generatedOtp: null,
     });
     return workerUser;
@@ -147,13 +219,16 @@ export const useAuthStore = create((set, get) => ({
 
     storage.set(AUTH_ROLE_KEY, ROLES.ADMIN);
     storage.set(AUTH_USER_KEY, adminUser);
-    localStorage.setItem('rb_auth_token', 'token-admin-admin_user');
+    if (!isFirebaseConfigured()) {
+      localStorage.setItem('rb_auth_token', 'admin_user');
+    }
 
     set({
       user: adminUser,
       role: ROLES.ADMIN,
       isAvailableNow: false,
       pendingOtpPhone: null,
+      confirmationResult: null,
       generatedOtp: null,
     });
     return adminUser;
@@ -194,13 +269,6 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Fake OTP generation system for phone login
-  sendOtp: (phone) => {
-    const fakeOtp = '1234'; // Reliable test OTP for instant testing
-    set({ pendingOtpPhone: phone, generatedOtp: fakeOtp });
-    return fakeOtp;
-  },
-
   // Worker availability toggle (worker-only)
   toggleAvailability: async () => {
     const { user, role, isAvailableNow } = get();
@@ -220,8 +288,13 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Log Out (Completely destroys session so user must re-authenticate)
-  logout: () => {
+  // Log Out: Completely destroys session, calls Firebase signOut, and clears local state
+  logout: async () => {
+    try {
+      await signOutFirebase();
+    } catch (err) {
+      console.warn('Firebase signOut error:', err);
+    }
     storage.remove(AUTH_USER_KEY);
     storage.remove(AUTH_ROLE_KEY);
     localStorage.removeItem('rb_auth_token');
@@ -230,6 +303,7 @@ export const useAuthStore = create((set, get) => ({
       role: null,
       isAvailableNow: false,
       pendingOtpPhone: null,
+      confirmationResult: null,
       generatedOtp: null,
     });
   },

@@ -176,10 +176,23 @@ export const useJobStore = create((set, get) => ({
     try {
       const updatedJob = await api.completeJob(jobId);
       set({ currentJob: updatedJob });
-      useToastStore.getState().success('Job completed successfully!');
+      useToastStore.getState().success('Work marked complete! Awaiting customer confirmation.');
       return updatedJob;
     } catch (err) {
       useToastStore.getState().error(err.message || 'Failed to complete job');
+      throw err;
+    }
+  },
+
+  // POST /jobs/{id}/confirm
+  confirmJob: async (jobId) => {
+    try {
+      const updatedJob = await api.confirmJob(jobId);
+      set({ currentJob: updatedJob });
+      useToastStore.getState().success('Job confirmed as completed!');
+      return updatedJob;
+    } catch (err) {
+      useToastStore.getState().error(err.message || 'Failed to confirm job');
       throw err;
     }
   },

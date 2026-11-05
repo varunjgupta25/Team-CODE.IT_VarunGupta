@@ -57,22 +57,20 @@ def api_update_worker_availability(
     from core.database import db
     from fastapi import HTTPException
 
-    # Resolve ID alias if applicable
-    id_aliases = {
-        "w_plumb_1": "worker_plumber_1",
-        "w_plumb_2": "worker_plumber_2",
-        "w_elec_1": "worker_elec_1",
-    }
-    resolved_id = id_aliases.get(worker_id, worker_id)
+    if current_user.get("role") != "admin" and current_user.get("uid") != worker_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update another worker's availability"
+        )
 
-    worker = db.get_document("workers", resolved_id) or db.get_document("workers", worker_id)
+    worker = db.get_document("workers", worker_id)
     if not worker:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Worker with ID '{worker_id}' not found"
         )
 
-    db.update_document("workers", worker.get("uid", resolved_id), {"isAvailableNow": payload.isAvailableNow})
+    db.update_document("workers", worker_id, {"isAvailableNow": payload.isAvailableNow})
     worker["isAvailableNow"] = payload.isAvailableNow
     return {"status": "success", "workerId": worker_id, "isAvailableNow": payload.isAvailableNow}
 
@@ -106,15 +104,46 @@ class WorkerRegisterRequest(BaseModel):
 
 
 @router.post("/workers/register", status_code=status.HTTP_201_CREATED)
-def api_register_worker(payload: WorkerRegisterRequest):
+def api_register_worker(
+    payload: WorkerRegisterRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
-    Register a real worker dynamically into the database.
-    Immediately verified and marked online so they appear in matching.
+    Register a real worker into the database.
+    Requires a valid token; UID is strictly taken from the authenticated token.
+    Roles are immutable once set and existing documents cannot be overwritten.
     """
-    import uuid
     from core.database import db
+    from fastapi import HTTPException
 
-    worker_uid = payload.uid or f"worker_{uuid.uuid4().hex[:8]}"
+    worker_uid = current_user.get("uid")
+    if not worker_uid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authenticated user UID not found"
+        )
+
+    existing_user = db.get_document("users", worker_uid)
+    existing_worker = db.get_document("workers", worker_uid)
+
+    if existing_user and existing_user.get("role") == "customer":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is already registered as a customer; roles are immutable"
+        )
+
+    if existing_user and existing_user.get("role") == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin profiles cannot be overwritten via registration"
+        )
+
+    if existing_worker:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Worker is already registered; cannot overwrite existing worker profile"
+        )
+
     default_loc = {"lat": 19.2812, "lng": 72.8697, "address": "Mira Road, Mumbai"}
     worker_loc = payload.location or default_loc
     if "lat" not in worker_loc:

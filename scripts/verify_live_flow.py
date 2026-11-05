@@ -16,7 +16,7 @@ def run_live_verification_and_flow():
 
     # 2. Verify an Unverified Worker exists in Seed
     unverified_uid = "worker_plumber_unverified"
-    worker_token = f"token-worker-{unverified_uid}"
+    worker_token = unverified_uid
     worker_headers = {"Authorization": f"Bearer {worker_token}"}
     print(f"\n[Step 2] Checking unverified worker profile ({unverified_uid})...")
     r = requests.get(f"{BASE_URL}/workers/{unverified_uid}", headers=worker_headers)
@@ -27,7 +27,7 @@ def run_live_verification_and_flow():
 
     # 3. Customer creates a plumbing job
     print("\n[Step 3] Customer posts a plumbing job...")
-    customer_token = "token-customer-cust_priya"
+    customer_token = "cust_priya"
     cust_headers = {"Authorization": f"Bearer {customer_token}"}
     job_payload = {
         "category": "plumber",
@@ -59,7 +59,7 @@ def run_live_verification_and_flow():
 
     # 5. Worker submits ID verification request (POST /workers/verify)
     print("\n[Step 5] Worker submits verification request (/workers/verify)...")
-    worker_token = f"token-worker-{unverified_uid}"
+    worker_token = unverified_uid
     worker_headers = {"Authorization": f"Bearer {worker_token}"}
     verify_payload = {
         "documentType": "aadhaar",
@@ -81,7 +81,7 @@ def run_live_verification_and_flow():
     print(" -> PASS: 403 Forbidden properly enforced for non-admin.")
 
     # 6b. Admin approving unknown uid (404)
-    admin_token = "token-admin-admin_user"
+    admin_token = "admin_user"
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
     print("\n[Step 6b] Admin attempting approval of unknown uid (should return 404)...")
     r = requests.post(f"{BASE_URL}/admin/verifications/non_existent_worker/approve", headers=admin_headers)
@@ -178,8 +178,14 @@ def run_live_verification_and_flow():
     assert r.json()["status"] == "in_progress"
     print(" -> Job in progress!")
 
-    print("\n[Step 13] Worker completes job...")
+    print("\n[Step 13] Worker marks job done (awaiting customer confirmation)...")
     r = requests.post(f"{BASE_URL}/jobs/{job_id}/complete", headers=worker_headers)
+    assert r.status_code == 200
+    assert r.json()["status"] == "awaiting_confirmation"
+    print(" -> Job awaiting confirmation!")
+
+    print("\n[Step 13b] Customer confirms job completed...")
+    r = requests.post(f"{BASE_URL}/jobs/{job_id}/confirm", headers=cust_headers)
     assert r.status_code == 200
     assert r.json()["status"] == "completed"
     print(" -> Job completed!")

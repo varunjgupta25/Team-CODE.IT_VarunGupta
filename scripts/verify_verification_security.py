@@ -51,14 +51,14 @@ def run_test():
         "mode": "on_demand",
         "location": {"lat": 19.2812, "lng": 72.8697, "address": "Mira Road East"}
     }
-    cust_headers = {"Authorization": "Bearer token-customer-cust_priya"}
+    cust_headers = {"Authorization": "Bearer cust_priya"}
     r_job = requests.post(f"{BASE_URL}/jobs", json=job_payload, headers=cust_headers)
     assert r_job.status_code == 201, f"Failed to create job: {r_job.text}"
     job_id = r_job.json().get("id")
     print(f"  --> Created test job: {job_id}")
 
     # Query matches as customer
-    cust_headers = {"Authorization": "Bearer token-customer-cust_priya"}
+    cust_headers = {"Authorization": "Bearer cust_priya"}
     r_match = requests.get(f"{BASE_URL}/workers/match?jobId={job_id}", headers=cust_headers)
     assert r_match.status_code == 200
     matched_ids = [m.get("worker", {}).get("uid") for m in r_match.json()]
@@ -68,7 +68,7 @@ def run_test():
 
     # 3. Worker submits documentation
     print(f"\n[STEP 4] Worker submits Aadhaar document for verification...")
-    worker_headers = {"Authorization": f"Bearer token-worker-{new_worker_id}"}
+    worker_headers = {"Authorization": f"Bearer {new_worker_id}"}
     verify_payload = {
         "documentType": "aadhaar",
         "documentNumber": "5555 4444 3333"
@@ -81,7 +81,7 @@ def run_test():
 
     # 4. Check Admin Pending Queue
     print(f"\n[STEP 5] Checking Admin Pending Verifications Queue...")
-    admin_headers = {"Authorization": "Bearer token-admin-admin_user"}
+    admin_headers = {"Authorization": "Bearer admin_user"}
     r_pending = requests.get(f"{BASE_URL}/admin/verifications/pending", headers=admin_headers)
     print(f"  --> Status: {r_pending.status_code}")
     assert r_pending.status_code == 200
@@ -125,7 +125,7 @@ def run_test():
 
     # 9. Test Seeded Unverified Worker (Kamlesh Verma)
     print(f"\n[STEP 10] Testing Seeded Unverified Worker 'worker_plumber_unverified'...")
-    kw_headers = {"Authorization": "Bearer token-worker-worker_plumber_unverified"}
+    kw_headers = {"Authorization": "Bearer worker_plumber_unverified"}
     r_kw = requests.get(f"{BASE_URL}/workers/worker_plumber_unverified", headers=kw_headers)
     kw_data = r_kw.json()
     print(f"  --> Kamlesh initial state: verified={kw_data.get('verified')}, status={kw_data.get('verificationStatus')}")

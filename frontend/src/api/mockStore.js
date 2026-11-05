@@ -358,12 +358,36 @@ export const mockStore = {
       throw new Error(`Cannot complete job from current status: ${job.status}`);
     }
 
+    job.status = JOB_STATUS.AWAITING_CONFIRMATION;
+    job.completedByWorkerAt = new Date().toISOString();
+    job.updatedAt = new Date().toISOString();
+    saveJobs(jobs);
+
+    // jobsDone is not incremented until customer confirms
+    return job;
+  },
+
+  // POST /jobs/{id}/confirm
+  async confirmJob(jobId) {
+    await delay();
+    const jobs = getJobs();
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job) throw new Error('Job not found');
+
+    if (job.status === JOB_STATUS.COMPLETED) {
+      throw new Error('Job is already completed');
+    }
+
+    if (job.status !== JOB_STATUS.AWAITING_CONFIRMATION) {
+      throw new Error(`Cannot confirm job from current status: ${job.status}`);
+    }
+
     job.status = JOB_STATUS.COMPLETED;
     job.completedAt = new Date().toISOString();
     job.updatedAt = new Date().toISOString();
     saveJobs(jobs);
 
-    // Update worker jobsDone
+    // Increment worker jobsDone exactly once
     if (job.acceptedWorkerId) {
       const workers = getWorkers();
       const worker = workers.find((w) => w.uid === job.acceptedWorkerId);

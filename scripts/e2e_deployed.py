@@ -159,7 +159,7 @@ class E2ERunner:
         """
         print(f"\n{CYAN}==> 3. Validating seeded data & demo authentication...{RESET}")
         # Test admin access to pending queue
-        admin_headers = {"Authorization": "Bearer token-admin-admin_user"}
+        admin_headers = {"Authorization": "Bearer admin_user"}
         try:
             r = self.session.get(f"{self.backend_url}/admin/verifications", headers=admin_headers, timeout=5)
             passed = r.status_code == 200 and isinstance(r.json(), list)
@@ -173,7 +173,7 @@ class E2ERunner:
             self.record("Seeded Admin Authentication", "HTTP 200", str(e), False)
 
         # Test customer matching on seeded job
-        cust_headers = {"Authorization": "Bearer token-customer-cust_priya"}
+        cust_headers = {"Authorization": "Bearer cust_priya"}
         try:
             r_match = self.session.get(
                 f"{self.backend_url}/workers/match?jobId=job_seed_plumber_open",
@@ -200,7 +200,7 @@ class E2ERunner:
         """
         print(f"\n{CYAN}==> 4. Executing customer job booking & negotiation lifecycle...{RESET}")
         cust_uid = "cust_priya"
-        cust_headers = {"Authorization": f"Bearer token-customer-{cust_uid}"}
+        cust_headers = {"Authorization": f"Bearer {cust_uid}"}
 
         # 1. Customer Posts a Job
         job_payload = {
@@ -272,7 +272,7 @@ class E2ERunner:
 
         # 4. Turn-based Negotiation Flow (Offer -> Counter -> Accept)
         offer_id = None
-        worker_headers = {"Authorization": f"Bearer token-worker-{matched_worker_id}"}
+        worker_headers = {"Authorization": f"Bearer {matched_worker_id}"}
         try:
             # Customer sends initial offer
             r_off = self.session.post(
@@ -332,13 +332,22 @@ class E2ERunner:
                 r_start.status_code == 200
             )
 
-            # Worker Completes Job
+            # Worker Completes Job (moves to awaiting_confirmation)
             r_comp = self.session.post(f"{self.backend_url}/jobs/{job_id}/complete", headers=worker_headers, timeout=5)
             self.record(
-                "Worker Completes Job",
-                "HTTP 200 status=completed",
+                "Worker Marks Job Done",
+                "HTTP 200 status=awaiting_confirmation",
                 f"HTTP {r_comp.status_code}",
                 r_comp.status_code == 200
+            )
+
+            # Customer Confirms Job (moves to completed, increments jobsDone)
+            r_conf = self.session.post(f"{self.backend_url}/jobs/{job_id}/confirm", headers=cust_headers, timeout=5)
+            self.record(
+                "Customer Confirms Job Completed",
+                "HTTP 200 status=completed",
+                f"HTTP {r_conf.status_code}",
+                r_conf.status_code == 200
             )
 
             # Customer Submits 5-Star Review
@@ -383,9 +392,9 @@ class E2ERunner:
         """
         print(f"\n{CYAN}==> 5. Executing live worker verification & admin approval journey...{RESET}")
         worker_id = f"worker_e2e_{int(time.time())}"
-        worker_headers = {"Authorization": f"Bearer token-worker-{worker_id}"}
-        admin_headers = {"Authorization": "Bearer token-admin-admin_user"}
-        cust_headers = {"Authorization": "Bearer token-customer-cust_priya"}
+        worker_headers = {"Authorization": f"Bearer {worker_id}"}
+        admin_headers = {"Authorization": "Bearer admin_user"}
+        cust_headers = {"Authorization": "Bearer cust_priya"}
 
         # 1. Register new worker
         reg_payload = {

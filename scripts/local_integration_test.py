@@ -21,9 +21,9 @@ def test_full_live_system_flow():
     print(f"    Health Status: {res.json()['status']} ({res.json()['service']})")
 
     # 3. Customer Token Simulation (as sent by frontend apiClient)
-    # Frontend sends Authorization: Bearer token-customer-cust_priya
-    customer_headers = {"Authorization": "Bearer token-customer-cust_priya"}
-    worker_headers = {"Authorization": "Bearer token-worker-worker_elec_1"}
+    # Frontend obtains a Firebase ID token; in dev mode direct UID is accepted.
+    customer_headers = {"Authorization": "Bearer cust_priya"}
+    worker_headers = {"Authorization": "Bearer worker_elec_1"}
 
     # 4. Customer Creates a Job Request
     print("\n[3] Customer posts job (/api/jobs)...")
@@ -72,7 +72,7 @@ def test_full_live_system_flow():
     print(f"    Offer Created: ID={offer_id}, price=Rs.{offer['price']}, status={offer['status']}")
 
     # 7. Worker Counters the Offer
-    worker_specific_headers = {"Authorization": f"Bearer token-worker-{worker_id}"}
+    worker_specific_headers = {"Authorization": f"Bearer {worker_id}"}
     print(f"\n[6] Worker counters offer to Rs.450 (/api/offers/{offer_id}/counter)...")
     counter_payload = {
         "price": 450.0,
@@ -106,10 +106,17 @@ def test_full_live_system_flow():
     assert res.json()["status"] == "in_progress"
     print(f"    Job in progress!")
 
-    # 11. Worker Completes Job
-    print(f"\n[9] Worker completes job (/api/jobs/{job_id}/complete)...")
+    # 11. Worker Completes Job (two-step: moves to awaiting_confirmation)
+    print(f"\n[9] Worker marks job done (/api/jobs/{job_id}/complete)...")
     res = client.post(f"/api/jobs/{job_id}/complete", headers=worker_specific_headers)
     assert res.status_code == 200, f"Complete job failed: {res.text}"
+    assert res.json()["status"] == "awaiting_confirmation"
+    print(f"    Job awaiting customer confirmation!")
+
+    # 11b. Customer Confirms Job (two-step: moves to completed)
+    print(f"\n[9b] Customer confirms job done (/api/jobs/{job_id}/confirm)...")
+    res = client.post(f"/api/jobs/{job_id}/confirm", headers=customer_headers)
+    assert res.status_code == 200, f"Confirm job failed: {res.text}"
     assert res.json()["status"] == "completed"
     print(f"    Job marked completed!")
 

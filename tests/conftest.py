@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from main import app
 from core.database import db
+from core.config import settings
 from core.auth import get_current_user
 
 
@@ -15,8 +16,13 @@ def isolated_db():
     """
     old_save_to_disk = db._save_to_disk
     old_use_mock = db._use_mock
+    old_use_mock_settings = settings.USE_MOCK_FIREBASE
+    old_env_settings = settings.ENV
+
     db._save_to_disk = False
     db._use_mock = True
+    settings.USE_MOCK_FIREBASE = True
+    settings.ENV = "development"
 
     # Baseline seed data for tests
     baseline_users = {
@@ -181,6 +187,8 @@ def isolated_db():
     app.dependency_overrides.clear()
     db._save_to_disk = old_save_to_disk
     db._use_mock = old_use_mock
+    settings.USE_MOCK_FIREBASE = old_use_mock_settings
+    settings.ENV = old_env_settings
 
 
 @pytest.fixture

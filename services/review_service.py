@@ -4,6 +4,7 @@ from typing import Any, Dict
 from fastapi import HTTPException, status
 from core.database import db
 from models.review import ReviewCreate
+from services.job_service import check_and_auto_confirm
 
 
 def submit_review(
@@ -16,6 +17,8 @@ def submit_review(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job with ID '{review_data.jobId}' not found"
         )
+
+    job = check_and_auto_confirm(job)
 
     # Job must be completed
     if job.get("status") != "completed":

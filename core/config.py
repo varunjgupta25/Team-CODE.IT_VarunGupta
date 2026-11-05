@@ -33,11 +33,15 @@ class Settings(BaseSettings):
     AUTO_SEED: bool = True
 
     # Firebase Admin Configuration
+    FIREBASE_CREDENTIALS_JSON: str = ""
     FIREBASE_CREDENTIALS_PATH: str = ""
     USE_MOCK_FIREBASE: bool = True
 
     # Transit Speed in km/h for ETA calculation (PRD: 25 km/h)
     TRANSIT_SPEED_KMH: float = 25.0
+
+    # Auto-confirm period in hours for awaiting_confirmation jobs
+    AUTO_CONFIRM_HOURS: float = 48.0
 
 
 settings = Settings()

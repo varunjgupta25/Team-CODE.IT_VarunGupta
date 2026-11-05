@@ -13,7 +13,7 @@ import { useToastStore } from '../store/toastStore';
 import { api } from '../api';
 
 export function AuthPage() {
-  const { loginAsCustomer, loginAsWorker, loginAsAdmin, sendOtp } = useAuthStore();
+  const { loginAsCustomer, loginAsWorker, loginAsAdmin, requestPhoneOtp, confirmPhoneOtp } = useAuthStore();
   const navigate = useNavigate();
 
   // Active portal tab: 'customer' or 'worker'
@@ -41,41 +41,60 @@ export function AuthPage() {
   };
 
   // Step 1: Send OTP
-  const handleRequestOtp = (e) => {
+  const handleRequestOtp = async (e) => {
     e.preventDefault();
     if (!phone || phone.length < 10) {
       useToastStore.getState().error('Please enter a valid 10-digit mobile number');
       return;
     }
 
-    const code = sendOtp(phone);
-    setSimulatedCode(code);
-    setOtpSent(true);
-    useToastStore.getState().info(`SMS Sent! Verification OTP is: ${code}`);
+    try {
+      setIsVerifying(true);
+      const cleanPhone = phone.trim().replace(/^(\+91|0)/, '');
+      const formattedPhone = `+91${cleanPhone}`;
+      const result = await requestPhoneOtp(formattedPhone, 'recaptcha-container');
+      setIsVerifying(false);
+      setOtpSent(true);
+      if (result.isFirebase) {
+        setSimulatedCode('');
+        useToastStore.getState().success(`Verification code sent to ${formattedPhone}!`);
+      } else {
+        setSimulatedCode(result.otp || '1234');
+        useToastStore.getState().info(`SMS Sent! Verification OTP is: ${result.otp || '1234'}`);
+      }
+    } catch (err) {
+      setIsVerifying(false);
+      useToastStore.getState().error(err.message || 'Failed to send OTP. Please check phone number.');
+    }
   };
 
   // Step 2: Verify OTP & Sign In
-  const handleVerifyOtp = (e) => {
+  const handleVerifyOtp = async (e) => {
     e.preventDefault();
-    if (otpInput !== simulatedCode && otpInput !== '1234') {
-      useToastStore.getState().error('Invalid OTP. Use simulated OTP: 1234');
+    if (!otpInput) {
+      useToastStore.getState().error('Please enter the OTP');
       return;
     }
 
     setIsVerifying(true);
-    setTimeout(() => {
-      setIsVerifying(false);
+    try {
+      const resolvedUser = await confirmPhoneOtp(otpInput.trim());
+      const cleanPhone = phone.trim().replace(/^(\+91|0)/, '');
+      const formattedPhone = `+91 ${cleanPhone}`;
+
       if (activePortal === ROLES.CUSTOMER) {
-        loginAsCustomer({
+        await loginAsCustomer({
+          uid: resolvedUser?.uid,
           name: name.trim() || 'Customer',
-          phone: `+91 ${phone}`,
+          phone: formattedPhone,
         });
         useToastStore.getState().success('Customer login successful!');
         navigate('/');
       } else {
-        loginAsWorker({
+        await loginAsWorker({
+          uid: resolvedUser?.uid,
           name: name.trim() || 'Tradesman',
-          phone: `+91 ${phone}`,
+          phone: formattedPhone,
           skills: [selectedTrade],
           rates: { [selectedTrade]: Number(rate) },
           verified: false,
@@ -84,7 +103,11 @@ export function AuthPage() {
         useToastStore.getState().success('Worker registered & logged in!');
         navigate('/worker');
       }
-    }, 400);
+    } catch (err) {
+      useToastStore.getState().error(err.message || 'Invalid OTP code. Please try again.');
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   const handleResetData = () => {
@@ -213,44 +236,57 @@ export function AuthPage() {
               </div>
             )}
 
+            {/* Firebase reCAPTCHA anchor */}
+            <div id="recaptcha-container" className="flex justify-center my-1"></div>
+
             <button
               type="submit"
-              className="w-full py-3.5 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xs shadow-md shadow-brand-500/20 active:scale-95 transition min-h-touch flex items-center justify-center gap-2"
+              disabled={isVerifying}
+              className="w-full py-3.5 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xs shadow-md shadow-brand-500/20 active:scale-95 transition min-h-touch flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <span>Send Verification Code (OTP)</span>
+              <span>{isVerifying ? 'Sending...' : 'Send Verification Code (OTP)'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
         ) : (
           /* Step 2: OTP Verification */
           <form onSubmit={handleVerifyOtp} className="space-y-4 animate-in fade-in">
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-xs text-blue-900 flex items-center justify-between">
-              <div>
-                <p className="font-extrabold">Simulated OTP Sent to +91 {phone}</p>
-                <p className="text-[11px] text-blue-700 mt-0.5">
-                  Enter code: <span className="font-black underline">{simulatedCode}</span>
+            {simulatedCode ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-xs text-blue-900 flex items-center justify-between">
+                <div>
+                  <p className="font-extrabold">Simulated OTP Sent to +91 {phone}</p>
+                  <p className="text-[11px] text-blue-700 mt-0.5">
+                    Enter code: <span className="font-black underline">{simulatedCode}</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOtpInput(simulatedCode)}
+                  className="px-2.5 py-1 rounded-lg bg-blue-600 text-white text-[11px] font-bold active:scale-95"
+                >
+                  Auto-fill
+                </button>
+              </div>
+            ) : (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-900">
+                <p className="font-extrabold">SMS Code Sent to +91 {phone}</p>
+                <p className="text-[11px] text-emerald-700 mt-0.5">
+                  Enter the 6-digit code received via SMS to complete verification.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setOtpInput(simulatedCode)}
-                className="px-2.5 py-1 rounded-lg bg-blue-600 text-white text-[11px] font-bold active:scale-95"
-              >
-                Auto-fill
-              </button>
-            </div>
+            )}
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Enter 4-Digit OTP
+                Enter Verification OTP
               </label>
               <input
                 type="text"
                 required
-                maxLength="4"
+                maxLength="6"
                 value={otpInput}
                 onChange={(e) => setOtpInput(e.target.value)}
-                placeholder="1234"
+                placeholder={simulatedCode ? '1234' : '123456'}
                 className="w-full text-center text-xl font-black tracking-widest px-3 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>

@@ -15,13 +15,62 @@ except ImportError:
 security = HTTPBearer(auto_error=False)
 
 
+def _verify_firebase_token(token: str) -> Dict[str, Any]:
+    """
+    Verifies a Firebase ID token using firebase-admin SDK.
+    Admin privileges require an explicit custom claim ('admin': True or 'role': 'admin').
+    """
+    if not FIREBASE_AUTH_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Firebase authentication is not available"
+        )
+
+    try:
+        decoded_token = firebase_auth.verify_id_token(token)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid or expired token: {str(exc)}"
+        )
+
+    uid = decoded_token.get("uid")
+    if not uid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing uid"
+        )
+
+    # Check for admin custom claim set via scripts/set_admin.py
+    is_admin = decoded_token.get("admin") is True or decoded_token.get("role") == "admin"
+    user_doc = db.get_document("users", uid)
+
+    if is_admin:
+        role = "admin"
+    else:
+        # Fallback to role stored in users doc, but never allow admin without the custom claim
+        role = user_doc.get("role") if user_doc else "customer"
+        if role == "admin":
+            role = "customer"
+
+    return {
+        "uid": uid,
+        "role": role,
+        "email": decoded_token.get("email"),
+        "phone": decoded_token.get("phone_number") or (user_doc.get("phone") if user_doc else ""),
+        "name": decoded_token.get("name") or (user_doc.get("name") if user_doc else uid),
+        "is_firebase": True,
+    }
+
+
 def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security)
 ) -> Dict[str, Any]:
     """
-    Extracts and verifies the Firebase ID token from the Authorization header.
-    In local development / mock mode, also supports direct test tokens
-    like 'Bearer worker_1' or 'Bearer cust_1' to enable smooth hackathon demo and curl testing.
+    Extracts and verifies the Bearer token from the Authorization header.
+    In production (or anytime ENV!=development or USE_MOCK_FIREBASE=false), strictly requires
+    a valid, non-expired Firebase ID token.
+    Dev convenience (seeded direct UIDs) is ONLY permitted when ENV=development AND USE_MOCK_FIREBASE=true.
     """
     if not credentials:
         raise HTTPException(
@@ -36,104 +85,43 @@ def get_current_user(
             detail="Empty Bearer token provided"
         )
 
-    # 1. Try real Firebase verification if credentials are live
-    if not settings.USE_MOCK_FIREBASE and FIREBASE_AUTH_AVAILABLE:
+    # Determine if dev convenience is permitted
+    dev_mode_allowed = (settings.ENV == "development" and settings.USE_MOCK_FIREBASE)
+
+    # In production / non-dev config, strictly verify with Firebase. No fallthrough.
+    if not dev_mode_allowed:
+        return _verify_firebase_token(token)
+
+    # When in dev mode (ENV=development AND USE_MOCK_FIREBASE=true):
+    # Try Firebase verification first if firebase is initialized and token is a JWT
+    if FIREBASE_AUTH_AVAILABLE and getattr(firebase_admin, "_apps", None):
         try:
-            decoded_token = firebase_auth.verify_id_token(token)
-            uid = decoded_token.get("uid")
-            user_doc = db.get_document("users", uid)
-            role = decoded_token.get("role") or (user_doc.get("role") if user_doc else "customer")
-            return {
-                "uid": uid,
-                "role": role,
-                "email": decoded_token.get("email"),
-                "name": decoded_token.get("name") or (user_doc.get("name") if user_doc else uid),
-                "is_firebase": True
-            }
-        except Exception:
-            # Fall through if token is a dev/mock token
+            return _verify_firebase_token(token)
+        except HTTPException:
+            # Fall through to dev convenience for direct mock user IDs only in development
             pass
 
-    # 2. Local Dev / Mock token resolution
-    # Strip optional prefixes like 'token-customer-', 'token-worker-', 'dev-', 'mock-'
-    clean_uid = (
-        token.replace("token-customer-", "")
-        .replace("token-worker-", "")
-        .replace("token-admin-", "")
-        .replace("dev-", "")
-        .replace("mock-", "")
-        .strip()
-    )
-
-    # Common ID alias mappings between frontend mock IDs and backend seed IDs
-    id_aliases = {
-        "cust_priya_1": "cust_priya",
-        "w_plumb_1": "worker_plumber_1",
-        "w_plumb_2": "worker_plumber_2",
-        "w_plumb_3": "worker_plumber_3",
-        "w_plumb_unverified": "worker_plumber_unverified",
-        "w_elec_1": "worker_elec_1",
-        "w_elec_2": "worker_elec_2",
-        "w_elec_3": "worker_elec_3",
-        "w_elec_unverified": "worker_elec_unverified",
-        "w_clean_1": "worker_cleaner_1",
-        "w_clean_2": "worker_cleaner_2",
-        "w_clean_3": "worker_cleaner_3",
-        "w_paint_1": "worker_painter_1",
-        "w_maid_1": "worker_maid_1",
-        "w_cook_1": "worker_cook_1",
-    }
-    resolved_uid = id_aliases.get(clean_uid, clean_uid)
-    
-    # Check if user exists in the database
-    user_doc = (
-        db.get_document("users", resolved_uid)
-        or db.get_document("users", clean_uid)
-        or db.get_document("users", token)
-    )
+    # Dev token resolution: direct lookup of seeded/mock UIDs in database
+    user_doc = db.get_document("users", token)
     if user_doc:
         return {
-            "uid": user_doc.get("uid", resolved_uid),
+            "uid": user_doc.get("uid", token),
             "role": user_doc.get("role", "customer"),
-            "name": user_doc.get("name", resolved_uid),
+            "name": user_doc.get("name", token),
             "phone": user_doc.get("phone", ""),
             "location": user_doc.get("location", {}),
-            "is_firebase": False
+            "is_firebase": False,
         }
 
-    # If worker exists by this id or alias
-    worker_doc = (
-        db.get_document("workers", resolved_uid)
-        or db.get_document("workers", clean_uid)
-        or db.get_document("workers", token)
-    )
+    worker_doc = db.get_document("workers", token)
     if worker_doc:
         return {
-            "uid": worker_doc.get("uid", resolved_uid),
+            "uid": worker_doc.get("uid", token),
             "role": "worker",
-            "name": worker_doc.get("name", f"Worker {resolved_uid}"),
+            "name": worker_doc.get("name", f"Worker {token}"),
+            "phone": worker_doc.get("phone", ""),
             "location": worker_doc.get("location", {}),
-            "is_firebase": False
-        }
-
-    # In dev mode: auto-provision new customer if token indicates customer role
-    if "customer" in token or clean_uid.startswith("cust_"):
-        new_customer = {
-            "uid": clean_uid,
-            "role": "customer",
-            "name": f"Customer {clean_uid[-4:]}" if len(clean_uid) >= 4 else "Customer",
-            "phone": "",
-            "language": "en",
-            "location": {"lat": 19.2825, "lng": 72.8570, "address": "Mira Road East, Mumbai"}
-        }
-        db.set_document("users", clean_uid, new_customer)
-        return {
-            "uid": clean_uid,
-            "role": "customer",
-            "name": new_customer["name"],
-            "phone": new_customer["phone"],
-            "location": new_customer["location"],
-            "is_firebase": False
+            "is_firebase": False,
         }
 
     # Token not found in database and not verified by Firebase

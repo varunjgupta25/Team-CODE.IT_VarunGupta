@@ -170,3 +170,162 @@ def test_user_cannot_read_another_users_job_offers(
     assert res.status_code == 200
     assert len(res.json()) >= 1
     assert res.json()[0]["id"] == offer_id
+
+
+def test_production_env_rejects_dev_and_fake_tokens(client, monkeypatch):
+    """
+    With ENV=production (or non-dev config), dev tokens like 'admin_user',
+    prefixed tokens like 'token-customer-x', garbage tokens and expired tokens each return 401.
+    """
+    from core.config import settings
+    import core.auth as auth_module
+
+    # Enforce production mode
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "USE_MOCK_FIREBASE", False)
+
+    # Mock verify_id_token to simulate Firebase verification behavior
+    def mock_verify_id_token(token):
+        if token == "valid_fb_token":
+            return {"uid": "fb_user_1", "role": "customer"}
+        elif token == "expired_token_xyz":
+            raise Exception("Firebase ID token has expired")
+        else:
+            raise Exception("Firebase ID token is invalid")
+
+    monkeypatch.setattr(auth_module.firebase_auth, "verify_id_token", mock_verify_id_token)
+    monkeypatch.setattr(auth_module, "FIREBASE_AUTH_AVAILABLE", True)
+
+    # 1. 'Bearer admin_user' in prod -> 401
+    res = client.get("/jobs/job_test_open", headers={"Authorization": "Bearer admin_user"})
+    assert res.status_code == 401, f"Expected 401 for admin_user in prod, got {res.status_code}"
+
+    # 2. 'Bearer token-customer-x' in prod -> 401
+    res = client.get("/jobs/job_test_open", headers={"Authorization": "Bearer token-customer-x"})
+    assert res.status_code == 401, f"Expected 401 for token-customer-x in prod, got {res.status_code}"
+
+    # 3. Garbage token -> 401
+    res = client.get("/jobs/job_test_open", headers={"Authorization": "Bearer garbage_token_999"})
+    assert res.status_code == 401, f"Expected 401 for garbage token, got {res.status_code}"
+
+    # 4. Expired token -> 401
+    res = client.get("/jobs/job_test_open", headers={"Authorization": "Bearer expired_token_xyz"})
+    assert res.status_code == 401, f"Expected 401 for expired token, got {res.status_code}"
+
+
+def test_registration_requires_valid_token_and_ignores_body_uid(client, auth_customer_headers):
+    """
+    /customers/register and /workers/register require a valid token, take uid
+    strictly from the token, and ignore any client-supplied body uid.
+    """
+    # 1. Unauthenticated /customers/register -> 401
+    res = client.post("/customers/register", json={"name": "Alice", "phone": "+91 99999 11111"})
+    assert res.status_code == 401
+
+    # 2. Unauthenticated /workers/register -> 401
+    res = client.post("/workers/register", json={
+        "name": "Bob Tradesman",
+        "phone": "+91 99999 22222",
+        "skills": ["plumber"],
+        "rates": {"plumber": 300.0}
+    })
+    assert res.status_code == 401
+
+    # 3. Authenticated customer registration attempts to supply a body uid="admin_user"
+    # The server MUST ignore the body uid and use cust_test_1 from auth token
+    res = client.post(
+        "/customers/register",
+        json={"uid": "admin_user", "name": "Priya Updated", "phone": "+91 98201 11222"},
+        headers=auth_customer_headers
+    )
+    assert res.status_code == 201
+    assert res.json()["uid"] == "cust_test_1"
+    assert res.json()["name"] == "Priya Updated"
+
+    # Verify admin_user document was NOT overwritten
+    admin_doc = db.get_document("users", "admin_user")
+    assert admin_doc is not None
+    assert admin_doc["role"] == "admin"
+    assert admin_doc["name"] == "Super Admin"
+
+
+def test_registration_role_immutability_and_overwrite_protection(client, auth_customer_headers, auth_worker_headers):
+    """
+    A customer cannot register as a worker (role is immutable once chosen).
+    A worker cannot register as a customer.
+    Existing worker profile cannot be re-registered to overwrite rating or verified status.
+    """
+    # Customer tries to register as worker -> 400
+    res = client.post(
+        "/workers/register",
+        json={
+            "uid": "cust_test_1",
+            "name": "Priya",
+            "phone": "+91 98201 11222",
+            "skills": ["electrician"],
+            "rates": {"electrician": 400.0}
+        },
+        headers=auth_customer_headers
+    )
+    assert res.status_code == 400
+    assert "role" in res.json()["detail"].lower()
+
+    # Worker tries to register as customer -> 400
+    res = client.post(
+        "/customers/register",
+        json={"name": "Rajesh Customer", "phone": "+91 91102 00001"},
+        headers=auth_worker_headers
+    )
+    assert res.status_code == 400
+    assert "role" in res.json()["detail"].lower()
+
+    # Worker tries to re-register as worker -> 400 (cannot overwrite worker doc)
+    res = client.post(
+        "/workers/register",
+        json={
+            "name": "Rajesh Overwrite",
+            "phone": "+91 91102 00001",
+            "skills": ["electrician"],
+            "rates": {"electrician": 400.0}
+        },
+        headers=auth_worker_headers
+    )
+    assert res.status_code == 400
+    assert "already registered" in res.json()["detail"].lower()
+
+
+def test_user_cannot_become_admin_without_firebase_claim(client, monkeypatch):
+    """
+    A user cannot become admin through any endpoint.
+    Even if 'role': 'admin' is placed in database, get_current_user strictly requires
+    an explicit Firebase custom claim ('admin': True or 'role': 'admin').
+    """
+    import core.auth as auth_module
+    from scripts.set_admin import set_admin_claim
+
+    # Seed a regular user in database with role="admin" maliciously
+    db.set_document("users", "sneaky_user", {
+        "uid": "sneaky_user",
+        "role": "admin",
+        "name": "Sneaky User"
+    })
+
+    # Decoded Firebase token does NOT have the admin custom claim
+    def mock_verify_id_token(token):
+        return {"uid": "sneaky_user", "email": "sneaky@example.com"}
+
+    monkeypatch.setattr(auth_module.firebase_auth, "verify_id_token", mock_verify_id_token)
+    monkeypatch.setattr(auth_module, "FIREBASE_AUTH_AVAILABLE", True)
+
+    # In production/Firebase verification mode, role is forcefully downgraded to customer
+    current_user = auth_module._verify_firebase_token("some_token")
+    assert current_user["role"] == "customer", f"Expected customer, got {current_user['role']}"
+
+    # Now verify with admin claim
+    def mock_verify_admin_token(token):
+        return {"uid": "sneaky_user", "admin": True, "role": "admin"}
+
+    monkeypatch.setattr(auth_module.firebase_auth, "verify_id_token", mock_verify_admin_token)
+    admin_user = auth_module._verify_firebase_token("admin_token")
+    assert admin_user["role"] == "admin"
+

@@ -41,12 +41,13 @@ repair-buddy/
 ├── routers/                     # FastAPI route handlers (jobs, offers, reviews, sos, workers, admin)
 ├── services/                    # Domain logic (H3 matching, Dijkstra routing, trust, negotiation)
 ├── scripts/                     # Automated test suites, deployment verification, and demo tools
-│   ├── e2e_deployed.py          # Complete 21-step deployed / local environment verification
+│   ├── e2e_deployed.py          # Complete end-to-end deployed / local environment verification
 │   ├── local_test_suite.py      # Core backend logic test suite
 │   ├── local_integration_test.py# Local live API integration test
 │   ├── verify_live_flow.py      # Live worker match & verification flow check
-│   └── verify_verification_security.py # Worker registration & admin Aadhaar verification check
-├── tests/                       # 95 Pytest test cases covering all edge cases
+│   ├── verify_verification_security.py # Worker registration & admin Aadhaar verification check
+│   └── set_admin.py             # Grant admin role via Firebase custom claim (production use)
+├── tests/                       # 108 Pytest test cases covering all edge cases
 ├── frontend/                    # React 19 + Vite + Tailwind CSS SPA
 │   ├── src/                     # React source (pages, components, api client, contexts)
 │   ├── vercel.json              # Vercel SPA catch-all rewrite rule
@@ -90,18 +91,60 @@ npm run dev
 ## 4. Run Automated Test Suites
 
 ```bash
-# Run all 95 backend unit and integration tests
+# Run all 108 backend unit and integration tests
 pytest -v
 
-# Run the full 21-step end-to-end verification against the local server
+# Run the full end-to-end verification against the local server
 python scripts/e2e_deployed.py http://127.0.0.1:8000
 ```
 
 ---
 
+## 4a. Authentication Model
+
+### Production (Firebase Phone OTP)
+
+```
+ENV=production, USE_MOCK_FIREBASE=false
+```
+
+- Frontend: Firebase Phone Auth → `getIdToken()` on every request
+- Backend: `firebase_admin.auth.verify_id_token(token)` — no fallthrough
+- Admin role: **only** via Firebase custom claim (`{'admin': True}`)  
+  Set with: `python scripts/set_admin.py <firebase_uid>`
+- Any invalid/expired/garbage token → **401 Unauthorized**, no exception
+
+### Development / Demo (Mock mode)
+
+```
+ENV=development, USE_MOCK_FIREBASE=true
+```
+
+- Tokens are plain UIDs (e.g. `cust_priya`, `worker_elec_1`, `admin_user`)
+- Role resolved from DB; `admin_user` has `role: admin` in seed data
+- Dev convenience is **disabled** as soon as either condition is false
+
+### Firebase Setup (Phone Auth)
+
+1. Create Firebase project → **Authentication → Phone** → Enable  
+2. Add test numbers: `+91 9999900001` / `+91 9999900002` with OTP `123456`  
+3. Create Web App → copy config values to `frontend/.env.local`:
+
+```env
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_APP_ID=...
+```
+
+4. Download service account JSON → paste as `FIREBASE_CREDENTIALS_JSON` env var in Render  
+5. Grant admin: `python scripts/set_admin.py <uid>`
+
+---
+
 ## 5. Complete cURL Commands for Every Endpoint
 
-> Note: All endpoints accept `Authorization: Bearer <token>`. In local development/demo mode, use user UIDs directly (e.g. `cust_priya`, `worker_elec_1`, `worker_plumber_1`).
+> Note: All endpoints accept `Authorization: Bearer <token>`. In development/demo mode (`ENV=development AND USE_MOCK_FIREBASE=true`), use seeded UIDs directly (e.g. `cust_priya`, `worker_elec_1`, `admin_user`). In production, use a Firebase ID token obtained via `getIdToken()`.
 
 ### 1. Health Check
 ```bash
@@ -212,11 +255,20 @@ curl -X POST "http://localhost:8000/jobs/job_seed_cleaner_accepted/start" \
 
 ---
 
-### 11. Worker Completes Job (`POST /jobs/{id}/complete`)
-Validates that job status is `in_progress`. Transitions status to `completed` and increments worker's `jobsDone` counter.
+### 11. Worker Marks Job Done (`POST /jobs/{id}/complete`)
+Validates that job status is `in_progress` and requester is the assigned worker. Transitions status to **`awaiting_confirmation`** (does NOT yet increment `jobsDone`).
 ```bash
 curl -X POST "http://localhost:8000/jobs/job_seed_painter_progress/complete" \
      -H "Authorization: Bearer worker_painter_1"
+```
+
+---
+
+### 11b. Customer Confirms Job Done (`POST /jobs/{id}/confirm`)
+Customer-only endpoint. Transitions **`awaiting_confirmation` → `completed`** and increments the worker's `jobsDone` counter exactly once. If the customer does not confirm within `AUTO_CONFIRM_HOURS` (default 48h), the job is auto-confirmed lazily on the next read/list.
+```bash
+curl -X POST "http://localhost:8000/jobs/job_seed_painter_progress/confirm" \
+     -H "Authorization: Bearer cust_ananya"
 ```
 
 ---
@@ -298,9 +350,11 @@ Repair Buddy includes automated deployment configuration for [Render](https://re
 
    | Variable | Value / Example | Description |
    |---|---|---|
-   | `ENV` | `production` | Environment mode |
-   | `USE_MOCK_FIREBASE` | `true` | Runs in persistent mock Firestore mode (or provide `FIREBASE_CREDENTIALS_PATH` for live Firebase) |
-   | `AUTO_SEED` | `true` | Idempotently seeds 25 workers, 5 customers, 5 jobs, and `admin_user` on cold boot if database is empty |
+   | `ENV` | `production` | Environment mode — disables all dev token fallthrough |
+   | `USE_MOCK_FIREBASE` | `false` | Must be `false` in production — requires real Firebase ID tokens |
+   | `AUTO_SEED` | `false` | Set `true` only on first deploy; set `false` after seed to prevent overwrite |
+   | `FIREBASE_CREDENTIALS_JSON` | *(paste service account JSON)* | Firebase Admin SDK credentials — sync: false (secret) |
+   | `AUTO_CONFIRM_HOURS` | `48` | Hours after `awaiting_confirmation` before auto-confirm triggers |
    | `CORS_ORIGINS` | `http://localhost:5173,https://repair-buddy.vercel.app` | Comma-separated list of exact allowed origins |
    | `CORS_ORIGIN_REGEX` | `https://.*\.vercel\.app` | Optional regex to permit all Vercel PR preview deployments |
    | `TRANSIT_SPEED_KMH` | `25.0` | Travel speed constant for ETA calculations |

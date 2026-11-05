@@ -66,6 +66,11 @@ export const api = {
     return apiClient.post(`/jobs/${jobId}/complete`);
   },
 
+  async confirmJob(jobId) {
+    if (isMock) return mockStore.confirmJob(jobId);
+    return apiClient.post(`/jobs/${jobId}/confirm`);
+  },
+
   // Reviews, SOS, Reports
   async submitReview(payload) {
     if (isMock) return mockStore.submitReview(payload);

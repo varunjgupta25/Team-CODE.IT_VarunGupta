@@ -10,6 +10,7 @@ from services.job_service import (
     get_nearby_jobs_for_worker,
     start_job,
     complete_job,
+    confirm_job,
     cancel_job,
 )
 
@@ -24,22 +25,53 @@ class CustomerRegisterRequest(BaseModel):
 
 
 @router.post("/customers/register", status_code=status.HTTP_201_CREATED)
-def api_register_customer(payload: CustomerRegisterRequest):
+def api_register_customer(
+    payload: CustomerRegisterRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Register or update customer profile dynamically.
+    Requires a valid token; UID is strictly taken from the authenticated token.
+    Roles are immutable once set and existing documents cannot be overwritten.
     """
-    import uuid
-    customer_uid = payload.uid or f"cust_{uuid.uuid4().hex[:8]}"
+    from fastapi import HTTPException
+
+    customer_uid = current_user.get("uid")
+    if not customer_uid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authenticated user UID not found"
+        )
+
+    # Check if user already exists as a worker in workers or users collection
+    existing_worker = db.get_document("workers", customer_uid)
+    existing_user = db.get_document("users", customer_uid)
+
+    if existing_worker or (existing_user and existing_user.get("role") == "worker"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is already registered as a worker; roles are immutable"
+        )
+
+    if existing_user and existing_user.get("role") == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin profiles cannot be overwritten via registration"
+        )
+
     default_loc = {"lat": 19.2812, "lng": 72.8697, "address": "Mira Road, Mumbai"}
-    cust_loc = payload.location or default_loc
+    cust_loc = payload.location or (existing_user.get("location") if existing_user else default_loc)
 
     user_data = {
+        **(existing_user or {}),
         "uid": customer_uid,
         "role": "customer",
-        "name": payload.name.strip(),
-        "phone": payload.phone.strip(),
+        "name": payload.name.strip() if payload.name else (existing_user.get("name") if existing_user else "Customer"),
+        "phone": payload.phone.strip() if payload.phone else (existing_user.get("phone") if existing_user else current_user.get("phone", "")),
         "location": cust_loc,
     }
+    user_data["role"] = "customer"
+
     db.set_document("users", customer_uid, user_data)
     return user_data
 
@@ -100,11 +132,25 @@ def api_complete_job(
     current_user: Dict[str, Any] = Depends(require_role(["worker", "admin"]))
 ):
     """
-    Worker marks the job as complete. Transitions status from 'in_progress' to 'completed'.
-    Increments worker's jobsDone counter. Rejects invalid transitions with HTTP 400.
+    Worker marks the job as complete. Transitions status from 'in_progress' to 'awaiting_confirmation'.
+    Does not increment worker jobsDone counter until customer confirms.
     """
     worker_id = current_user.get("uid")
     return complete_job(id, worker_id)
+
+
+@router.post("/jobs/{id}/confirm", response_model=JobResponse)
+def api_confirm_job(
+    id: str,
+    current_user: Dict[str, Any] = Depends(require_role(["customer", "admin"]))
+):
+    """
+    Customer confirms the completed job. Transitions status from 'awaiting_confirmation' to 'completed'.
+    Increments worker's jobsDone counter. Rejects invalid transitions with HTTP 400.
+    """
+    customer_id = current_user.get("uid")
+    caller_role = current_user.get("role", "customer")
+    return confirm_job(id, customer_id, caller_role)
 
 
 @router.post("/jobs/{id}/cancel", response_model=JobResponse)

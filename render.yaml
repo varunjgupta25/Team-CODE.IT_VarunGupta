@@ -10,12 +10,14 @@ services:
       - key: ENV
         value: production
       - key: USE_MOCK_FIREBASE
-        value: "true"
+        value: "false"
       - key: AUTO_SEED
-        value: "true"
+        value: "false"
       - key: CORS_ORIGINS
         value: http://localhost:5173,http://127.0.0.1:5173
       - key: CORS_ORIGIN_REGEX
         value: https://.*\.vercel\.app
       - key: TRANSIT_SPEED_KMH
         value: "25.0"
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false

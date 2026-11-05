@@ -26,6 +26,7 @@ const STATUS_STEPS = [
   { key: JOB_STATUS.NEGOTIATING, label: 'Offers' },
   { key: JOB_STATUS.ACCEPTED, label: 'En Route' },
   { key: JOB_STATUS.IN_PROGRESS, label: 'In Progress' },
+  { key: JOB_STATUS.AWAITING_CONFIRMATION, label: 'Confirm' },
   { key: JOB_STATUS.COMPLETED, label: 'Done' },
 ];
 
@@ -38,6 +39,7 @@ export function JobStatusPage() {
     acceptOffer,
     counterOffer,
     rejectOffer,
+    confirmJob,
     startPolling,
     stopPolling,
   } = useJobStore();
@@ -198,14 +200,18 @@ export function JobStatusPage() {
         </div>
       </div>
 
-      {/* Assigned Worker Card if Accepted or In Progress */}
-      {[JOB_STATUS.ACCEPTED, JOB_STATUS.IN_PROGRESS].includes(job.status) && assignedWorker && (
+      {/* Assigned Worker Card if Accepted, In Progress, or Awaiting Confirmation */}
+      {[JOB_STATUS.ACCEPTED, JOB_STATUS.IN_PROGRESS, JOB_STATUS.AWAITING_CONFIRMATION].includes(job.status) && assignedWorker && (
         <div className="bg-white rounded-3xl p-4 border-2 border-brand-500 shadow-md space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 text-[11px] font-black text-brand-700 bg-brand-50 px-2.5 py-1 rounded-full">
               <Zap className="w-3.5 h-3.5 fill-brand-600 text-brand-600" />
               <span>
-                {job.status === JOB_STATUS.IN_PROGRESS ? 'Service In Progress' : 'Provider is En Route (~12 min)'}
+                {job.status === JOB_STATUS.AWAITING_CONFIRMATION
+                  ? 'Work Finished &bull; Awaiting Your Confirmation'
+                  : job.status === JOB_STATUS.IN_PROGRESS
+                  ? 'Service In Progress'
+                  : 'Provider is En Route (~12 min)'}
               </span>
             </div>
             <span className="text-sm font-black text-slate-900">
@@ -262,6 +268,39 @@ export function JobStatusPage() {
               height="220px"
             />
           </div>
+        </div>
+      )}
+
+      {/* Awaiting Confirmation Banner: Customer confirms work is finished */}
+      {job.status === JOB_STATUS.AWAITING_CONFIRMATION && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-3xl p-5 text-center space-y-3">
+          <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-600 mx-auto flex items-center justify-center">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-slate-900">Worker Marked Job as Done!</h2>
+            <p className="text-xs text-slate-600 mt-1">
+              Please inspect the completed work and pay{' '}
+              <span className="font-extrabold text-slate-900">{formatCurrency(job.finalPrice)}</span> in cash.
+            </p>
+          </div>
+          <button
+            disabled={isProcessing}
+            onClick={async () => {
+              setIsProcessing(true);
+              try {
+                await confirmJob(job.id);
+              } catch (err) {
+                console.error(err);
+              } finally {
+                setIsProcessing(false);
+              }
+            }}
+            className="w-full py-3.5 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xs shadow-lg shadow-brand-500/25 active:scale-95 transition min-h-touch flex items-center justify-center gap-2"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Confirm job done</span>
+          </button>
         </div>
       )}
 

@@ -90,12 +90,21 @@ def test_valid_lifecycle_transitions_end_to_end(client, auth_customer_headers, a
     assert res.status_code == 200
     assert res.json()["status"] == "in_progress"
 
-    # 5. Worker completes job -> status becomes 'completed'
+    # 5. Worker completes job -> status becomes 'awaiting_confirmation'
     res = client.post(f"/jobs/{job_id}/complete", headers=auth_worker_headers)
     assert res.status_code == 200
-    assert res.json()["status"] == "completed"
+    assert res.json()["status"] == "awaiting_confirmation"
 
-    # Verify jobsDone count was incremented
+    # Verify jobsDone count was NOT incremented yet
+    worker = db.get_document("workers", "worker_elec_1")
+    assert worker["jobsDone"] == 51
+
+    # 6. Customer confirms job completion -> status becomes 'completed'
+    res_conf = client.post(f"/jobs/{job_id}/confirm", headers=auth_customer_headers)
+    assert res_conf.status_code == 200
+    assert res_conf.json()["status"] == "completed"
+
+    # Verify jobsDone count was incremented after confirmation
     worker = db.get_document("workers", "worker_elec_1")
     assert worker["jobsDone"] == 52  # Baseline was 51
 
@@ -147,14 +156,15 @@ def test_double_start_and_double_complete_returns_400(client, auth_worker_header
     assert res2.status_code == 400
     assert "in_progress" in res2.json().get("detail", "").lower()
 
-    # 2. Complete the job
+    # 2. Complete the job -> moves to awaiting_confirmation
     res3 = client.post("/jobs/job_test_accepted/complete", headers=auth_worker_headers)
     assert res3.status_code == 200
+    assert res3.json()["status"] == "awaiting_confirmation"
 
-    # Repeat complete on already completed job -> 400
+    # Repeat complete on already completed / awaiting_confirmation job -> 400
     res4 = client.post("/jobs/job_test_accepted/complete", headers=auth_worker_headers)
     assert res4.status_code == 400
-    assert "completed" in res4.json().get("detail", "").lower()
+    assert "awaiting_confirmation" in res4.json().get("detail", "").lower()
 
 
 def test_cancel_while_open_or_negotiating_rejects_pending_offers(client, auth_customer_headers, auth_worker_headers):

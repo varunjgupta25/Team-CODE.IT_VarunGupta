@@ -2,9 +2,48 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
+from core.config import settings
 from core.database import db
 from models.job import JobCreate
 from services.distance import haversine_distance, calculate_eta
+
+
+def check_and_auto_confirm(job: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Lazily auto-confirms a job if it has been in 'awaiting_confirmation'
+    longer than settings.AUTO_CONFIRM_HOURS.
+    """
+    if not job or job.get("status") != "awaiting_confirmation":
+        return job
+
+    completed_by_worker_at_str = job.get("completedByWorkerAt")
+    if not completed_by_worker_at_str:
+        return job
+
+    try:
+        completed_at = datetime.fromisoformat(completed_by_worker_at_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        diff_hours = (now - completed_at).total_seconds() / 3600.0
+        if diff_hours >= settings.AUTO_CONFIRM_HOURS:
+            now_iso = now.isoformat()
+            job_id = job.get("id")
+            updated = db.update_document("jobs", job_id, {
+                "status": "completed",
+                "completedAt": now_iso,
+                "autoConfirmed": True,
+            })
+            accepted_worker = job.get("acceptedWorkerId")
+            if accepted_worker:
+                worker = db.get_document("workers", accepted_worker)
+                if worker:
+                    current_done = int(worker.get("jobsDone", 0))
+                    db.update_document("workers", accepted_worker, {
+                        "jobsDone": current_done + 1
+                    })
+            return updated
+    except Exception:
+        pass
+    return job
 
 
 def create_job(job_data: JobCreate, customer_id: str, current_user: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -72,6 +111,8 @@ def get_job(job_id: str, requester: Optional[Dict[str, Any]] = None) -> Dict[str
             detail=f"Job with ID '{job_id}' not found"
         )
 
+    # Check for lazy auto-confirmation if job has been awaiting confirmation > AUTO_CONFIRM_HOURS
+    job = check_and_auto_confirm(job)
     response_job = dict(job)
 
     # Enrich customer details if missing from historical/legacy job record
@@ -87,7 +128,7 @@ def get_job(job_id: str, requester: Optional[Dict[str, Any]] = None) -> Dict[str
     # Exact customer address is revealed to a worker only if they are the accepted worker for an active/completed booking.
     if requester and requester.get("role") == "worker":
         worker_uid = requester.get("uid")
-        if job.get("acceptedWorkerId") != worker_uid or job.get("status") not in ["accepted", "in_progress", "completed"]:
+        if job.get("acceptedWorkerId") != worker_uid or job.get("status") not in ["accepted", "in_progress", "awaiting_confirmation", "completed"]:
             loc = dict(response_job.get("location", {}))
             loc["address"] = "Exact address hidden until booking confirmed"
             response_job["location"] = loc
@@ -103,7 +144,7 @@ def get_nearby_jobs_for_worker(worker_id: str) -> List[Dict[str, Any]]:
     worker = db.get_document("workers", worker_id)
     if not worker:
         # Fallback to general open jobs if worker profile not registered
-        all_jobs = db.list_collection("jobs")
+        all_jobs = [check_and_auto_confirm(j) for j in db.list_collection("jobs")]
         return [
             {"job": j, "distanceKm": 0.0, "etaMinutes": 0.0}
             for j in all_jobs if j.get("status") in ["open", "negotiating"]
@@ -115,7 +156,7 @@ def get_nearby_jobs_for_worker(worker_id: str) -> List[Dict[str, Any]]:
     w_lng = worker_loc.get("lng")
     service_radius = float(worker.get("serviceRadiusKm", 5.0))
 
-    all_jobs = db.list_collection("jobs")
+    all_jobs = [check_and_auto_confirm(j) for j in db.list_collection("jobs")]
     nearby: List[Dict[str, Any]] = []
 
     for job in all_jobs:
@@ -173,7 +214,7 @@ def start_job(job_id: str, worker_id: str) -> Dict[str, Any]:
         )
 
     accepted_worker = job.get("acceptedWorkerId")
-    if accepted_worker and accepted_worker != worker_id:
+    if not accepted_worker or accepted_worker != worker_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the assigned accepted worker can start this job"
@@ -202,27 +243,68 @@ def complete_job(job_id: str, worker_id: str) -> Dict[str, Any]:
         )
 
     accepted_worker = job.get("acceptedWorkerId")
-    if accepted_worker and accepted_worker != worker_id:
+    if not accepted_worker or accepted_worker != worker_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the assigned worker can complete this job"
         )
 
+    now_iso = datetime.now(timezone.utc).isoformat()
     updated = db.update_document("jobs", job_id, {
-        "status": "completed",
-        "completedAt": datetime.now(timezone.utc).isoformat()
+        "status": "awaiting_confirmation",
+        "completedByWorkerAt": now_iso
     })
-
-    # Increment jobsDone count for the worker
-    if accepted_worker:
-        worker = db.get_document("workers", accepted_worker)
-        if worker:
-            current_done = int(worker.get("jobsDone", 0))
-            db.update_document("workers", accepted_worker, {
-                "jobsDone": current_done + 1
-            })
-
     return updated
+
+
+def confirm_job(job_id: str, customer_id: str, caller_role: str = "customer") -> Dict[str, Any]:
+    with db._lock:
+        job = db.get_document("jobs", job_id)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID '{job_id}' not found"
+            )
+
+        # Worker, other customers and unauthenticated callers get 403/401 on confirm
+        if caller_role != "admin" and job.get("customerId") != customer_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the customer who created this job can confirm completion"
+            )
+
+        job = check_and_auto_confirm(job)
+        current_status = job.get("status")
+
+        if current_status == "completed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Job is already completed"
+            )
+
+        if current_status != "awaiting_confirmation":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot confirm job: job status is '{current_status}', expected 'awaiting_confirmation'"
+            )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        updated = db.update_document("jobs", job_id, {
+            "status": "completed",
+            "completedAt": now_iso
+        })
+
+        # Increment jobsDone count for the worker exactly once
+        accepted_worker = job.get("acceptedWorkerId")
+        if accepted_worker:
+            worker = db.get_document("workers", accepted_worker)
+            if worker:
+                current_done = int(worker.get("jobsDone", 0))
+                db.update_document("workers", accepted_worker, {
+                    "jobsDone": current_done + 1
+                })
+
+        return updated
 
 
 

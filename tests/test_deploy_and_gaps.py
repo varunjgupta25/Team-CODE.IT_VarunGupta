@@ -31,13 +31,13 @@ def test_admin_verifications_auth_and_queue():
     # 2. 403 Forbidden for non-admin roles
     res_cust = client.get(
         "/admin/verifications",
-        headers={"Authorization": "Bearer token-customer-cust_test_1"}
+        headers={"Authorization": "Bearer cust_test_1"}
     )
     assert res_cust.status_code == 403
 
     res_worker = client.get(
         "/admin/verifications",
-        headers={"Authorization": "Bearer token-worker-worker_elec_1"}
+        headers={"Authorization": "Bearer worker_elec_1"}
     )
     assert res_worker.status_code == 403
 
@@ -64,13 +64,13 @@ def test_admin_verifications_auth_and_queue():
     verify_res = client.post(
         "/workers/verify",
         json={"documentType": "aadhaar", "documentNumber": full_doc},
-        headers={"Authorization": f"Bearer token-worker-{worker_id}"}
+        headers={"Authorization": f"Bearer {worker_id}"}
     )
     assert verify_res.status_code == 200
     assert verify_res.json()["status"] == "pending"
 
     # 4. Admin lists verifications (check root and /api prefixes)
-    admin_headers = {"Authorization": "Bearer token-admin-admin_user"}
+    admin_headers = {"Authorization": "Bearer admin_user"}
     res_admin = client.get("/admin/verifications", headers=admin_headers)
     assert res_admin.status_code == 200
     pending_list = res_admin.json()
@@ -203,7 +203,7 @@ def test_routing_graph_present_and_missing():
     G = routing_svc.load_graph()
     assert G is not None, "GraphML must be present and loadable"
 
-    auth_customer = {"Authorization": "Bearer token-customer-cust_test_1"}
+    auth_customer = {"Authorization": "Bearer cust_test_1"}
 
     # Test /route with valid job and worker
     route_res = client.get(
