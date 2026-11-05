@@ -8,6 +8,7 @@ VALID_DOC_TYPES = Literal["aadhaar", "pan", "voter_id", "passport", "driving_lic
 class WorkerLocation(BaseModel):
     lat: float = Field(..., ge=-90.0, le=90.0, description="Latitude between -90 and 90")
     lng: float = Field(..., ge=-180.0, le=180.0, description="Longitude between -180 and 180")
+    address: Optional[str] = Field(None, description="Street or approximate area address")
 
 
 class WorkerBase(BaseModel):
@@ -25,6 +26,7 @@ class WorkerBase(BaseModel):
     avatarUrl: Optional[str] = Field(None, description="Worker profile avatar image URL")
     about: Optional[str] = Field(None, description="Short bio or experience description")
     rate: Optional[float] = Field(None, description="Selected skill rate")
+    phone: Optional[str] = Field(None, description="Contact phone (only visible to owner/admin)")
 
 
 class WorkerCreate(WorkerBase):

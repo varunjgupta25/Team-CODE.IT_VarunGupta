@@ -11,6 +11,7 @@ from models.worker import (
 )
 from services.matching import match_workers_for_job
 from services.verification_service import request_worker_verification
+from services.worker_privacy import serialize_worker
 
 router = APIRouter(tags=["Workers"])
 
@@ -54,7 +55,8 @@ def api_update_worker_availability(
 ):
     """
     Worker toggles their availability status (online/offline).
-    Only the worker themselves or an admin can update this status.
+    Only the worker themselves (or an admin) can update this status.
+    Rejects unauthorized modifications with HTTP 403 Forbidden.
     """
     from core.database import db
     from fastapi import HTTPException
@@ -74,9 +76,41 @@ def api_update_worker_availability(
             detail=f"Worker with ID '{worker_id}' not found"
         )
 
+    # Ownership Authorization Check
+    requesting_uid = current_user.get("uid")
+    caller_role = current_user.get("role", "worker")
+    worker_owner = worker.get("owner_uid") or worker.get("uid", resolved_id)
+
+    if caller_role != "admin" and worker_owner != requesting_uid:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={
+                "error": "forbidden",
+                "message": "You do not have permission to modify this profile.",
+                "detail": "You do not have permission to modify this profile."
+            }
+        )
+
     db.update_document("workers", worker.get("uid", resolved_id), {"isAvailableNow": payload.isAvailableNow})
     worker["isAvailableNow"] = payload.isAvailableNow
     return {"status": "success", "workerId": worker_id, "isAvailableNow": payload.isAvailableNow}
+
+
+@router.get("/workers", response_model=List[Dict[str, Any]])
+@router.get("/workers/feed", response_model=List[Dict[str, Any]])
+def api_list_workers_feed(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Public worker feed listing with address obfuscation and sensitive data stripping.
+    """
+    from core.database import db
+    all_workers = db.list_collection("workers")
+    return [
+        serialize_worker(w, requester=current_user, mask_for_public=True)
+        for w in all_workers
+        if not w.get("isFlagged") and not w.get("flagged")
+    ]
 
 
 @router.get("/workers/{worker_id}")
@@ -84,15 +118,30 @@ def api_get_worker(
     worker_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
+    """
+    Fetches worker profile.
+    Applies strict privacy masking:
+    - Public view (requester != worker): Strips phone number, exact street address, and private metadata.
+    - Owner view (requester == worker or admin): Returns complete profile.
+    """
     from core.database import db
     from fastapi import HTTPException
-    worker = db.get_document("workers", worker_id)
+
+    id_aliases = {
+        "w_plumb_1": "worker_plumber_1",
+        "w_plumb_2": "worker_plumber_2",
+        "w_elec_1": "worker_elec_1",
+    }
+    resolved_id = id_aliases.get(worker_id, worker_id)
+
+    worker = db.get_document("workers", resolved_id) or db.get_document("workers", worker_id)
     if not worker:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Worker with ID '{worker_id}' not found"
         )
-    return worker
+
+    return serialize_worker(worker, requester=current_user)
 
 
 class WorkerRegisterRequest(BaseModel):

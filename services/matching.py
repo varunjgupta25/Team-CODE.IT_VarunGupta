@@ -28,6 +28,7 @@ from fastapi import HTTPException, status
 from core.database import db
 from services.distance import haversine_distance, calculate_eta, is_within_30_minutes
 from services.trust import get_worker_trust_info
+from services.worker_privacy import serialize_worker
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,7 @@ def match_workers_for_job(job_id: str, requester: Optional[Dict[str, Any]] = Non
         worker_reports = db.query_collection("reports", {"workerId": worker.get("uid", "")})
         trust_score, trust_badge = get_worker_trust_info(worker, len(worker_reports))
 
-        worker_dict = dict(worker)
+        worker_dict = serialize_worker(worker, requester=requester, mask_for_public=True)
         worker_dict["rate"] = worker_rate
         worker_dict["trustScore"] = trust_score
         worker_dict["trustBadge"] = trust_badge
