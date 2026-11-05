@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 class ReportCreate(BaseModel):
     workerId: str = Field(..., min_length=1, max_length=128, description="UID of the worker being reported")
     reason: str = Field(..., min_length=1, max_length=2000, description="Reason for the report")
+    category: Optional[str] = Field("other", description="Abuse category tag (e.g. spam, harassment, no_show, fraud)")
     jobId: Optional[str] = Field(None, max_length=128, description="Optional associated job ID")
 
     @field_validator("reason")
@@ -21,6 +22,7 @@ class ReportResponse(BaseModel):
     workerId: str
     reporterId: str
     reason: str
+    category: Optional[str] = "other"
     jobId: Optional[str] = None
     createdAt: str
     status: str = "pending"

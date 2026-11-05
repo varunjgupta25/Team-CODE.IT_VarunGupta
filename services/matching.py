@@ -109,8 +109,8 @@ def match_workers_for_job(job_id: str, requester: Optional[Dict[str, Any]] = Non
         if not worker.get("isAvailableNow", True):
             continue
 
-        # Rule 3: Must not be flagged
-        if worker.get("isFlagged", False) or worker.get("flagged", False):
+        # Rule 3: Must not be flagged or under review
+        if worker.get("isFlagged", False) or worker.get("flagged", False) or worker.get("accountStatus") == "UNDER_REVIEW":
             continue
 
         # Rule 4: Must match required skill category

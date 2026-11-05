@@ -109,7 +109,7 @@ def api_list_workers_feed(
     return [
         serialize_worker(w, requester=current_user, mask_for_public=True)
         for w in all_workers
-        if not w.get("isFlagged") and not w.get("flagged")
+        if not w.get("isFlagged") and not w.get("flagged") and w.get("accountStatus") != "UNDER_REVIEW"
     ]
 
 
