@@ -43,26 +43,31 @@ class Settings(BaseSettings):
     def __init__(self, **values):
         explicit_env = values.get("ENV")
         explicit_environment = values.get("ENVIRONMENT")
+        explicit_origins = values.get("ALLOWED_ORIGINS")
+        if explicit_origins is None:
+            explicit_origins = values.get("CORS_ORIGINS")
         super().__init__(**values)
 
-        # pydantic-settings may load CI environment variables over constructor
+        # Pydantic-settings may load CI environment variables over constructor
         # values; preserve explicit settings used by tests and programmatic callers.
         if explicit_env is not None or explicit_environment is not None:
             resolved_env = (explicit_env or explicit_environment or "development").strip().lower()
             self.ENV = resolved_env
             self.ENVIRONMENT = resolved_env
             if resolved_env in ["production", "staging"]:
-                dev_defaults = {
-                    "http://localhost:5173",
-                    "http://127.0.0.1:5173",
-                    "http://localhost:3000",
-                    "http://127.0.0.1:3000",
-                }
-                self.ALLOWED_ORIGINS = [
-                    origin for origin in self.ALLOWED_ORIGINS or []
-                    if origin not in dev_defaults
-                ]
-                self.CORS_ORIGINS = list(self.ALLOWED_ORIGINS)
+                source = explicit_origins if explicit_origins is not None else self.ALLOWED_ORIGINS
+                if isinstance(source, str):
+                    origins = [item.strip() for item in source.split(",") if item.strip()]
+                elif isinstance(source, list):
+                    origins = [str(item).strip() for item in source if str(item).strip()]
+                else:
+                    origins = []
+                clean_origins = []
+                for origin in origins:
+                    if origin != "*" and origin not in clean_origins:
+                        clean_origins.append(origin)
+                self.ALLOWED_ORIGINS = clean_origins
+                self.CORS_ORIGINS = list(clean_origins)
 
     @model_validator(mode="after")
     def assemble_environment_and_cors(self) -> "Settings":
