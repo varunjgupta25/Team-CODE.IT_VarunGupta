@@ -3,21 +3,20 @@ import { useAuthStore } from '../store/authStore';
 import { ROLES } from '../types';
 import { computeTrust, formatCurrency } from '../lib/utils';
 import { TrustBadge } from '../components/common/TrustBadge';
+import { VerificationCard } from '../components/worker/VerificationCard';
 import {
-  User,
   Phone,
   MapPin,
   ShieldCheck,
-  Briefcase,
   LogOut,
-  Star,
-  Award,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToastStore } from '../store/toastStore';
 
 export function ProfilePage() {
-  const { user, role, logout } = useAuthStore();
+  const { user, role, logout, syncStatus, lastError, retryLastSync } = useAuthStore();
   const navigate = useNavigate();
 
   if (!user) {
@@ -40,6 +39,28 @@ export function ProfilePage() {
         <h1 className="text-xl font-black text-slate-900 tracking-tight">Account Profile</h1>
         <p className="text-xs text-slate-500">Your registered details on RepairBuddy</p>
       </div>
+
+      {/* Sync Failure Banner with Retry */}
+      {syncStatus === 'failed' && lastError && (
+        <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-between gap-3 text-xs text-red-900 shadow-sm animate-in fade-in">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-extrabold text-red-800">Profile Sync Failed</p>
+              <p className="text-[11px] text-red-600 mt-0.5">{lastError}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => retryLastSync && retryLastSync()}
+            disabled={syncStatus === 'syncing'}
+            className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm active:scale-95 transition shrink-0 flex items-center gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+            <span>{syncStatus === 'syncing' ? 'Retrying...' : 'Retry'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Profile Card */}
       <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
@@ -103,11 +124,15 @@ export function ProfilePage() {
           )}
         </div>
 
-        {/* Security & Verification status */}
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center gap-2.5 text-xs text-emerald-900">
-          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>Identity Verified • Government ID Approved</span>
-        </div>
+        {/* Worker Verification Card or Customer Verified notice */}
+        {!isCustomer ? (
+          <VerificationCard />
+        ) : (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center gap-2.5 text-xs text-emerald-900">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Customer Verified • OTP Verified Account</span>
+          </div>
+        )}
 
         {/* Log Out Button */}
         <button

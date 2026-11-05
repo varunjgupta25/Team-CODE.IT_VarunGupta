@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useJobStore } from '../../store/jobStore';
 import { useAuthStore } from '../../store/authStore';
@@ -16,7 +16,6 @@ import {
   ShieldCheck,
   ChevronRight,
   MapPin,
-  TrendingUp,
 } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 

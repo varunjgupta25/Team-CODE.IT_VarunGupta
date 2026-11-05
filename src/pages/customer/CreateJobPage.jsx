@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useJobStore } from '../../store/jobStore';
 import { useAuthStore } from '../../store/authStore';
 import { CATEGORIES, DEFAULT_COORDINATES } from '../../types';
 import { MapPicker } from '../../components/map/MapPicker';
-import { ArrowLeft, Clock, Calendar, Sparkles, MapPin, IndianRupee, ShieldCheck } from 'lucide-react';
-import { formatCurrency } from '../../lib/utils';
+import { ArrowLeft, Clock, Calendar, Sparkles } from 'lucide-react';
 
 export function CreateJobPage() {
   const navigate = useNavigate();
@@ -17,11 +16,14 @@ export function CreateJobPage() {
 
   const [category, setCategory] = useState(initialCategory);
   const [description, setDescription] = useState('');
+  const [customerName, setCustomerName] = useState(user?.name || '');
+  const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
   const [mode, setMode] = useState('on_demand'); // 'on_demand' or 'scheduled'
   const [scheduledDate, setScheduledDate] = useState('');
   const [budget, setBudget] = useState('');
   const [location, setLocation] = useState(DEFAULT_COORDINATES);
   const [address, setAddress] = useState('B-402, Shanti Park, Mira Road East, Mumbai');
+
 
   const selectedCategoryObj = CATEGORIES.find((c) => c.id === category) || CATEGORIES[0];
 
@@ -32,10 +34,13 @@ export function CreateJobPage() {
     }
 
     try {
+      const resolvedName = (customerName || user?.name || 'Customer').trim();
+      const resolvedPhone = (customerPhone || user?.phone || '').trim();
+
       const jobData = {
-        customerId: user?.uid || 'cust_priya_1',
-        customerName: user?.name || 'Priya Sharma',
-        customerPhone: user?.phone || '+91 98765 43210',
+        customerId: user?.uid || `cust_${Date.now()}`,
+        customerName: resolvedName,
+        customerPhone: resolvedPhone,
         category,
         description,
         mode,
@@ -90,6 +95,32 @@ export function CreateJobPage() {
                 {cat.label}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Contact Info (Pre-filled from login) */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <div className="space-y-1">
+            <label className="block text-[11px] font-bold text-slate-800">Your Name</label>
+            <input
+              type="text"
+              required
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="E.g. Varun Gupta"
+              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-[11px] font-bold text-slate-800">Mobile Number</label>
+            <input
+              type="tel"
+              required
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              placeholder="E.g. +91 98765 00000"
+              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-brand-500"
+            />
           </div>
         </div>
 

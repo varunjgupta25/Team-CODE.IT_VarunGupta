@@ -49,7 +49,7 @@ export const useJobStore = create((set, get) => ({
       const workers = await api.getMatchedWorkers(jobId);
       set({ matchedWorkers: workers, isMatchingLoading: false });
       return workers;
-    } catch (err) {
+    } catch {
       set({ isMatchingLoading: false });
       useToastStore.getState().error('Could not match workers at this time');
       return [];
@@ -69,15 +69,27 @@ export const useJobStore = create((set, get) => ({
   },
 
   // GET /jobs/nearby
-  fetchNearbyJobs: async (coords) => {
+  // TODO: re-enable lat/lng/radiusKm when backend supports them
+  fetchNearbyJobs: async (_coords) => {
     set({ isLoading: true });
     try {
-      const jobs = await api.getNearbyJobs(coords);
+      // TODO: re-enable lat/lng/radiusKm when backend supports them
+      const raw = await api.getNearbyJobs();
+      const jobs = (raw || []).map((item) => {
+        if (item && item.job) {
+          return {
+            ...item.job,
+            distanceKm: item.distanceKm,
+            etaMinutes: item.etaMinutes,
+            within30: item.within30 ?? (item.etaMinutes <= 30),
+          };
+        }
+        return item;
+      });
       set({ nearbyJobs: jobs, isLoading: false });
       return jobs;
-    } catch (err) {
+    } catch {
       set({ isLoading: false });
-      console.warn('Error fetching nearby jobs:', err);
       return [];
     }
   },

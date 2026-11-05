@@ -23,7 +23,8 @@ export function Header() {
         {/* Brand Logo & Tagline */}
         <div 
           onClick={() => {
-            if (role === ROLES.WORKER) navigate('/worker');
+            if (role === ROLES.ADMIN) navigate('/admin');
+            else if (role === ROLES.WORKER) navigate('/worker');
             else if (role === ROLES.CUSTOMER) navigate('/');
             else navigate('/login');
           }}
@@ -56,9 +57,9 @@ export function Header() {
                 className="w-6 h-6 rounded-lg object-cover border border-slate-300"
               />
               <span className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase ${
-                isCustomer ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
+                role === ROLES.ADMIN ? 'bg-purple-100 text-purple-800' : isCustomer ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
               }`}>
-                {isCustomer ? 'Customer' : 'Worker'}
+                {role === ROLES.ADMIN ? 'Admin' : isCustomer ? 'Customer' : 'Worker'}
               </span>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>

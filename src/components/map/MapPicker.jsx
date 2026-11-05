@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { MapPin, Navigation, Crosshair } from 'lucide-react';
 import { DEFAULT_COORDINATES } from '../../types';
 
 // Custom clean SVG pin for Leaflet
@@ -83,7 +82,7 @@ function RecenterMap({ position }) {
   return null;
 }
 
-export function MapPicker({ value, onChange, address, onAddressChange }) {
+export function MapPicker({ value, onChange, address: _address, onAddressChange }) {
   const [position, setPosition] = useState(value || DEFAULT_COORDINATES);
 
   const handleSelectPreset = (preset) => {

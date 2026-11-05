@@ -6,14 +6,12 @@ import { formatCurrency, formatTimeAgo } from '../../lib/utils';
 import { SosButton } from '../../components/common/SosButton';
 import { ReportModal } from '../../components/common/ReportModal';
 import { EmptyState } from '../../components/common/EmptyState';
+import { RouteMap } from '../../components/map/RouteMap';
 import {
   Clock,
   CheckCircle2,
-  AlertCircle,
   Phone,
-  ShieldCheck,
   Flag,
-  ArrowRight,
   TrendingUp,
   MapPin,
   RefreshCw,
@@ -21,6 +19,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { storage } from '../../lib/storage';
+import { api } from '../../api';
 
 const STATUS_STEPS = [
   { key: JOB_STATUS.OPEN, label: 'Matching' },
@@ -35,9 +34,7 @@ export function JobStatusPage() {
   const navigate = useNavigate();
   const {
     currentJob,
-    fetchJob,
     offers,
-    fetchOffers,
     acceptOffer,
     counterOffer,
     rejectOffer,
@@ -49,6 +46,7 @@ export function JobStatusPage() {
   const [activeCounterOfferId, setActiveCounterOfferId] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [workerDetails, setWorkerDetails] = useState(null);
 
   const activeJobId = routeJobId || currentJob?.id;
 
@@ -60,7 +58,22 @@ export function JobStatusPage() {
     return () => {
       stopPolling();
     };
-  }, [activeJobId]);
+  }, [activeJobId, startPolling, stopPolling]);
+
+  const job = currentJob || { id: activeJobId, status: JOB_STATUS.OPEN, category: 'Service' };
+  const assignedWorkerId =
+    job.acceptedWorkerId ||
+    (offers.length > 0 ? offers[offers.length - 1]?.workerId : null);
+
+  useEffect(() => {
+    if (assignedWorkerId) {
+      api.getWorker(assignedWorkerId)
+        .then((res) => {
+          if (res) setWorkerDetails(res);
+        })
+        .catch(() => {});
+    }
+  }, [assignedWorkerId]);
 
   if (!currentJob && !activeJobId) {
     return (
@@ -73,18 +86,20 @@ export function JobStatusPage() {
     );
   }
 
-  const job = currentJob || { id: activeJobId, status: JOB_STATUS.OPEN, category: 'Service' };
-
-  // Worker details — resolve from live mock store by uid
-  const allWorkers = storage.get('rb_mock_workers_v1', []);
-  const assignedWorkerId =
-    job.acceptedWorkerId ||
-    (offers.length > 0 ? offers[offers.length - 1]?.workerId : null);
-  const assignedWorker = allWorkers.find((w) => w.uid === assignedWorkerId) || null;
+  const allWorkers = storage.get('rb_mock_workers_v1', []) || [];
+  const matchedWorkerObj = workerDetails || allWorkers.find((w) => w.uid === assignedWorkerId);
+  const assignedWorker = matchedWorkerObj || (assignedWorkerId ? {
+    uid: assignedWorkerId,
+    name: 'Assigned Worker',
+    phone: '',
+    rating: 5.0,
+    jobsDone: 0,
+    avatarUrl: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80',
+    location: { lat: 19.2812, lng: 72.8697 },
+  } : null);
 
   const currentStepIdx = STATUS_STEPS.findIndex((s) => s.key === job.status);
   const latestOffer = offers.length > 0 ? offers[offers.length - 1] : null;
-  const isPendingWorkerOffer = latestOffer && latestOffer.status === OFFER_STATUS.PENDING && latestOffer.by === 'worker';
   const isPendingCustomerOffer = latestOffer && latestOffer.status === OFFER_STATUS.PENDING && latestOffer.by === 'customer';
 
   // Handle Accept
@@ -235,6 +250,17 @@ export function JobStatusPage() {
             >
               <Flag className="w-3 h-3" /> Report
             </button>
+          </div>
+
+          {/* Road Network Route Map with Live Polling */}
+          <div className="pt-2">
+            <RouteMap
+              jobId={job.id}
+              workerId={assignedWorker.uid}
+              workerLocation={assignedWorker.location}
+              customerLocation={job.location}
+              height="220px"
+            />
           </div>
         </div>
       )}

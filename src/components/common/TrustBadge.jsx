@@ -1,8 +1,18 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Award, Info, X } from 'lucide-react';
+import { ShieldCheck, Award, X } from 'lucide-react';
 
-export function TrustBadge({ score = 85, tier = 'Gold', showDetails = false }) {
+export function TrustBadge({ score = null, tier = null, showDetails: _showDetails = false }) {
   const [openModal, setOpenModal] = useState(false);
+
+  // Neutral/unknown state — no data yet from backend
+  if (score === null || tier === null) {
+    return (
+      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold bg-slate-50 text-slate-500 border-slate-200">
+        <ShieldCheck className="w-3 h-3 text-slate-400" />
+        <span>No trust score yet</span>
+      </div>
+    );
+  }
 
   let badgeColor = 'bg-amber-50 text-amber-800 border-amber-300';
   let badgeIconColor = 'text-amber-600';

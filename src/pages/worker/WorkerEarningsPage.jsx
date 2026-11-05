@@ -6,7 +6,6 @@ import { storage } from '../../lib/storage';
 import { JOB_STATUS } from '../../types';
 import {
   Award,
-  TrendingUp,
   ShieldCheck,
   Star,
   CheckCircle2,
@@ -28,7 +27,7 @@ export function WorkerEarningsPage() {
   const jobsScore = Math.min(20, Math.round((jobsDone / 50) * 20));
   const accountAgeScore = 10;
   const cleanScore = (user?.reportCount || 0) > 0 ? 0 : 10;
-  const trust = user ? computeTrust(user) : { score: 85, tier: 'Silver' };
+  const trust = user ? computeTrust(user) : { score: null, tier: null };
 
   // Dynamically pull real completed jobs from storage for this worker
   const allStoredJobs = storage.get('rb_mock_jobs_v1', []);

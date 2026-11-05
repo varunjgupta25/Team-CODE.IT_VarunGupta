@@ -10,15 +10,11 @@ import {
   Star,
   MapPin,
   Clock,
-  Sparkles,
   ArrowLeft,
-  Briefcase,
   Zap,
-  Phone,
   Check,
   X,
 } from 'lucide-react';
-import { useToastStore } from '../../store/toastStore';
 
 export function MatchedWorkersPage() {
   const { jobId } = useParams();
@@ -41,7 +37,7 @@ export function MatchedWorkersPage() {
       fetchJob(jobId);
       fetchMatchedWorkers(jobId);
     }
-  }, [jobId]);
+  }, [jobId, fetchJob, fetchMatchedWorkers]);
 
   const handleBookListedRate = async (worker) => {
     setIsSubmittingOffer(true);
@@ -118,16 +114,50 @@ export function MatchedWorkersPage() {
         ) : matchedWorkers.length === 0 ? (
           <EmptyState
             title="No workers currently available"
-            description="All verified providers in your immediate radius are currently occupied. Please try adjusting your category or check back in a few minutes."
+            description="All verified providers nearby are currently occupied. Please try adjusting your category or check back in a few minutes."
             actionLabel="Return to Home"
             onAction={() => navigate('/')}
           />
         ) : (
-          matchedWorkers.map((worker) => (
-            <div
-              key={worker.uid}
-              className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm hover:border-brand-500 transition-all space-y-3.5 relative overflow-hidden"
-            >
+          matchedWorkers.map((rawItem) => {
+            const w = rawItem.worker || rawItem;
+            const uid = w.uid;
+            const name = w.name;
+            const avatarUrl = w.avatarUrl || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80';
+            const verified = w.verified;
+            const rating = w.rating ?? 4.8;
+            const jobsDone = w.jobsDone ?? 0;
+            const currentCat = currentJob?.category?.toLowerCase() || '';
+            const rate = w.rate || (w.rates && (w.rates[currentCat] || Object.values(w.rates)[0])) || 350;
+            const distanceKm = rawItem.distanceKm ?? w.distanceKm ?? 1.2;
+            const etaMinutes = rawItem.etaMinutes ?? w.etaMinutes ?? 3.0;
+            const within30 = rawItem.within30 ?? (etaMinutes <= 30);
+            const trustScore = rawItem.trustScore ?? w.trustScore ?? null;
+            const trustTier = rawItem.trustBadge || w.trustBadge || rawItem.trustTier || w.trustTier || null;
+            const about = w.about || `${name} • Verified specialist with ${jobsDone}+ completed jobs`;
+
+            const worker = {
+              ...w,
+              uid,
+              name,
+              avatarUrl,
+              verified,
+              rating,
+              jobsDone,
+              rate,
+              distanceKm,
+              etaMinutes,
+              within30,
+              trustScore,
+              trustTier,
+              about,
+            };
+
+            return (
+              <div
+                key={worker.uid}
+                className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm hover:border-brand-500 transition-all space-y-3.5 relative overflow-hidden"
+              >
               {/* "Within 30 min" Tag if ETA <= 30 mins (PRD F10) */}
               {worker.within30 && (
                 <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold tracking-wide uppercase border border-emerald-300">
@@ -215,7 +245,8 @@ export function MatchedWorkersPage() {
                 </button>
               </div>
             </div>
-          ))
+          );
+        })
         )}
       </div>
 
