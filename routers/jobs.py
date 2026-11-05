@@ -115,7 +115,8 @@ def api_start_job(
     Rejects invalid state transitions with HTTP 400.
     """
     worker_id = current_user.get("uid")
-    return start_job(id, worker_id)
+    caller_role = current_user.get("role", "worker")
+    return start_job(id, worker_id, caller_role=caller_role)
 
 
 @router.post("/jobs/{id}/complete", response_model=JobResponse)
@@ -128,7 +129,8 @@ def api_complete_job(
     Increments worker's jobsDone counter. Rejects invalid transitions with HTTP 400.
     """
     worker_id = current_user.get("uid")
-    return complete_job(id, worker_id)
+    caller_role = current_user.get("role", "worker")
+    return complete_job(id, worker_id, caller_role=caller_role)
 
 
 @router.post("/jobs/{id}/cancel", response_model=JobResponse)

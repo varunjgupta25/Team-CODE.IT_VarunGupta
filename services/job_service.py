@@ -157,64 +157,77 @@ def get_nearby_jobs_for_worker(worker_id: str) -> List[Dict[str, Any]]:
     return nearby
 
 
-def start_job(job_id: str, worker_id: str) -> Dict[str, Any]:
-    job = db.get_document("jobs", job_id)
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job with ID '{job_id}' not found"
-        )
+def start_job(job_id: str, worker_id: str, caller_role: str = "worker") -> Dict[str, Any]:
+    with db._lock:
+        job = db.get_document("jobs", job_id)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID '{job_id}' not found"
+            )
 
-    current_status = job.get("status")
-    if current_status != "accepted":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot start job: job status is '{current_status}', expected 'accepted'"
-        )
+        current_status = job.get("status")
+        if current_status != "accepted":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot start job: job status is '{current_status}', expected 'accepted'"
+            )
 
-    accepted_worker = job.get("acceptedWorkerId")
-    if accepted_worker and accepted_worker != worker_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the assigned accepted worker can start this job"
-        )
+        accepted_worker = job.get("acceptedWorkerId")
+        if not accepted_worker:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot transition job state. No worker has accepted this job."
+            )
 
-    updated = db.update_document("jobs", job_id, {
-        "status": "in_progress",
-        "startedAt": datetime.now(timezone.utc).isoformat()
-    })
-    return updated
+        if caller_role != "admin" and accepted_worker != worker_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the assigned accepted worker can start this job"
+            )
+
+        updated = db.update_document("jobs", job_id, {
+            "status": "in_progress",
+            "startedAt": datetime.now(timezone.utc).isoformat()
+        })
+        return updated
 
 
-def complete_job(job_id: str, worker_id: str) -> Dict[str, Any]:
-    job = db.get_document("jobs", job_id)
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job with ID '{job_id}' not found"
-        )
+def complete_job(job_id: str, worker_id: str, caller_role: str = "worker") -> Dict[str, Any]:
+    with db._lock:
+        job = db.get_document("jobs", job_id)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID '{job_id}' not found"
+            )
 
-    current_status = job.get("status")
-    if current_status != "in_progress":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot complete job: job status is '{current_status}', expected 'in_progress'"
-        )
+        current_status = job.get("status")
+        if current_status != "in_progress":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot complete job: job status is '{current_status}', expected 'in_progress'"
+            )
 
-    accepted_worker = job.get("acceptedWorkerId")
-    if accepted_worker and accepted_worker != worker_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the assigned worker can complete this job"
-        )
+        accepted_worker = job.get("acceptedWorkerId")
+        if not accepted_worker:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot transition job state. No worker has accepted this job."
+            )
 
-    updated = db.update_document("jobs", job_id, {
-        "status": "completed",
-        "completedAt": datetime.now(timezone.utc).isoformat()
-    })
+        if caller_role != "admin" and accepted_worker != worker_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the assigned worker can complete this job"
+            )
 
-    # Increment jobsDone count for the worker
-    if accepted_worker:
+        updated = db.update_document("jobs", job_id, {
+            "status": "completed",
+            "completedAt": datetime.now(timezone.utc).isoformat()
+        })
+
+        # Increment jobsDone count for the worker
         worker = db.get_document("workers", accepted_worker)
         if worker:
             current_done = int(worker.get("jobsDone", 0))
@@ -222,7 +235,7 @@ def complete_job(job_id: str, worker_id: str) -> Dict[str, Any]:
                 "jobsDone": current_done + 1
             })
 
-    return updated
+        return updated
 
 
 

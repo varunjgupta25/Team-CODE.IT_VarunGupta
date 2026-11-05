@@ -245,3 +245,76 @@ def test_get_nearby_jobs_worker_filtering_and_fallback(client, auth_worker_heade
         assert "hidden" in item["job"]["location"]["address"].lower()
 
 
+def test_start_job_rejects_unassigned_worker_id(client, auth_worker_headers):
+    """
+    If a job is in 'accepted' state but acceptedWorkerId is None,
+    starting the job must fail fast with HTTP 400.
+    """
+    db.set_document("jobs", "job_corrupt_accepted", {
+        "id": "job_corrupt_accepted",
+        "customerId": "cust_test_1",
+        "category": "electrician",
+        "description": "Corrupt job without acceptedWorkerId",
+        "location": {"lat": 19.2825, "lng": 72.8570, "address": "Mira Road East"},
+        "status": "accepted",
+        "acceptedWorkerId": None,
+        "createdAt": "2026-10-24T10:00:00Z"
+    })
+
+    res = client.post("/jobs/job_corrupt_accepted/start", headers=auth_worker_headers)
+    assert res.status_code == 400
+    detail = res.json().get("detail", "")
+    assert "no worker has accepted this job" in detail.lower()
+
+
+def test_complete_job_rejects_unassigned_worker_id(client, auth_worker_headers):
+    """
+    If a job is in 'in_progress' state but acceptedWorkerId is None,
+    completing the job must fail fast with HTTP 400.
+    """
+    db.set_document("jobs", "job_corrupt_in_progress", {
+        "id": "job_corrupt_in_progress",
+        "customerId": "cust_test_1",
+        "category": "electrician",
+        "description": "Corrupt job without acceptedWorkerId",
+        "location": {"lat": 19.2825, "lng": 72.8570, "address": "Mira Road East"},
+        "status": "in_progress",
+        "acceptedWorkerId": None,
+        "createdAt": "2026-10-24T10:00:00Z"
+    })
+
+    res = client.post("/jobs/job_corrupt_in_progress/complete", headers=auth_worker_headers)
+    assert res.status_code == 400
+    detail = res.json().get("detail", "")
+    assert "no worker has accepted this job" in detail.lower()
+
+
+def test_unassigned_worker_cannot_start_or_complete_job(client, auth_worker_2_headers):
+    """
+    Worker 2 cannot start or complete a job assigned to Worker 1 (returns 403 Forbidden).
+    """
+    # job_test_accepted is assigned to worker_elec_1
+    res_start = client.post("/jobs/job_test_accepted/start", headers=auth_worker_2_headers)
+    assert res_start.status_code == 403
+
+    # job_test_in_progress is assigned to worker_elec_1
+    res_complete = client.post("/jobs/job_test_in_progress/complete", headers=auth_worker_2_headers)
+    assert res_complete.status_code == 403
+
+
+def test_cancel_already_cancelled_job_returns_400(client, auth_customer_headers):
+    """Cancelling a job that is already cancelled returns 400."""
+    db.set_document("jobs", "job_already_cancelled", {
+        "id": "job_already_cancelled",
+        "customerId": "cust_test_1",
+        "category": "electrician",
+        "description": "Already cancelled job",
+        "location": {"lat": 19.2825, "lng": 72.8570, "address": "Mira Road East"},
+        "status": "cancelled",
+        "createdAt": "2026-10-24T10:00:00Z"
+    })
+    res = client.post("/jobs/job_already_cancelled/cancel", headers=auth_customer_headers)
+    assert res.status_code == 400
+    assert "already cancelled" in res.json().get("detail", "").lower()
+
+
