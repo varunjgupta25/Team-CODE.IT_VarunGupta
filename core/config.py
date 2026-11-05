@@ -40,6 +40,30 @@ class Settings(BaseSettings):
     AUTO_FLAG_THRESHOLD: int = 3
     AUTO_FLAG_WINDOW_HOURS: int = 48
 
+    def __init__(self, **values):
+        explicit_env = values.get("ENV")
+        explicit_environment = values.get("ENVIRONMENT")
+        super().__init__(**values)
+
+        # pydantic-settings may load CI environment variables over constructor
+        # values; preserve explicit settings used by tests and programmatic callers.
+        if explicit_env is not None or explicit_environment is not None:
+            resolved_env = (explicit_env or explicit_environment or "development").strip().lower()
+            self.ENV = resolved_env
+            self.ENVIRONMENT = resolved_env
+            if resolved_env in ["production", "staging"]:
+                dev_defaults = {
+                    "http://localhost:5173",
+                    "http://127.0.0.1:5173",
+                    "http://localhost:3000",
+                    "http://127.0.0.1:3000",
+                }
+                self.ALLOWED_ORIGINS = [
+                    origin for origin in self.ALLOWED_ORIGINS or []
+                    if origin not in dev_defaults
+                ]
+                self.CORS_ORIGINS = list(self.ALLOWED_ORIGINS)
+
     @model_validator(mode="after")
     def assemble_environment_and_cors(self) -> "Settings":
         # 1. Standardize ENV / ENVIRONMENT
