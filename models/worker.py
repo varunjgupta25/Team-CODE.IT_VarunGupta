@@ -1,5 +1,8 @@
-from typing import Dict, List, Optional
-from pydantic import BaseModel, Field
+from typing import Dict, List, Literal, Optional
+from pydantic import BaseModel, Field, field_validator
+
+# Valid document types for worker ID verification
+VALID_DOC_TYPES = Literal["aadhaar", "pan", "voter_id", "passport", "driving_license"]
 
 
 class WorkerLocation(BaseModel):
@@ -47,8 +50,8 @@ class MatchedWorkerResponse(BaseModel):
 
 
 class WorkerVerifyRequest(BaseModel):
-    documentType: Optional[str] = Field("aadhaar", description="ID document type (e.g. aadhaar, pan, voter_id)")
-    documentNumber: Optional[str] = Field(None, description="Document identification number")
+    documentType: Optional[VALID_DOC_TYPES] = Field("aadhaar", description="ID document type")
+    documentNumber: Optional[str] = Field(None, max_length=32, description="Document identification number")
 
 
 class WorkerVerifyResponse(BaseModel):

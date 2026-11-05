@@ -1,7 +1,8 @@
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from core.auth import get_current_user, require_role
+from models.job import VALID_CATEGORIES
 from models.worker import (
     MatchedWorkerResponse,
     WorkerVerifyRequest,
@@ -95,14 +96,26 @@ def api_get_worker(
 
 class WorkerRegisterRequest(BaseModel):
     uid: Optional[str] = None
-    name: str = Field(..., min_length=2, description="Worker full name")
-    phone: str = Field(..., description="Phone number")
+    name: str = Field(..., min_length=2, max_length=128, description="Worker full name")
+    phone: str = Field(..., min_length=4, max_length=32, description="Phone number")
     skills: List[str] = Field(..., min_length=1, description="List of worker skills")
     rates: Dict[str, float] = Field(..., description="Hourly/visit rates per skill")
     location: Optional[Dict[str, Any]] = None
-    serviceRadiusKm: Optional[float] = 10.0
-    avatarUrl: Optional[str] = None
-    about: Optional[str] = None
+    serviceRadiusKm: Optional[float] = Field(10.0, gt=0, le=100.0)
+    avatarUrl: Optional[str] = Field(None, max_length=2048)
+    about: Optional[str] = Field(None, max_length=1000)
+
+    @field_validator("skills")
+    @classmethod
+    def normalise_skills(cls, v: List[str]) -> List[str]:
+        normalised = [s.strip().lower() for s in v if s.strip()]
+        invalid = [s for s in normalised if s not in VALID_CATEGORIES]
+        if invalid:
+            from models.job import VALID_CATEGORIES as VC
+            raise ValueError(
+                f"Unknown skill(s): {', '.join(invalid)}. Valid: {', '.join(VC)}"
+            )
+        return normalised
 
 
 @router.post("/workers/register", status_code=status.HTTP_201_CREATED)
