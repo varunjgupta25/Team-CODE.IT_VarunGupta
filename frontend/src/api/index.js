@@ -98,9 +98,29 @@ export const api = {
     return apiClient.post('/workers/verify', payload);
   },
 
+  async uploadWorkerVerification(formData) {
+    if (isMock) return mockStore.uploadWorkerVerification(formData);
+    return apiClient.post('/workers/verify/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
   async approveWorkerVerification(workerUid) {
     if (isMock) return mockStore.approveWorkerVerification(workerUid);
     return apiClient.post(`/admin/verifications/${workerUid}/approve`);
+  },
+
+  async rejectWorkerVerification(workerUid, reason) {
+    if (isMock) return mockStore.rejectWorkerVerification(workerUid, reason);
+    return apiClient.post(`/admin/verifications/${workerUid}/reject`, { reason });
+  },
+
+  async getVerificationDocumentBlobUrl(workerUid, docType) {
+    if (isMock) return mockStore.getVerificationDocumentBlobUrl(workerUid, docType);
+    const response = await apiClient.get(`/admin/verifications/${workerUid}/documents/${docType}`, {
+      responseType: 'blob',
+    });
+    return URL.createObjectURL(response);
   },
 
   async getPendingVerifications() {

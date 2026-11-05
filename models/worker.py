@@ -72,3 +72,25 @@ class PendingVerificationWorker(BaseModel):
     requestedAt: Optional[str] = None
 
 
+class PendingVerificationWorkerDTO(BaseModel):
+    uid: str
+    name: str
+    docType: Optional[str] = "aadhaar"
+    last4: Optional[str] = None
+    submittedAt: Optional[str] = None
+    attemptCount: int = 1
+    status: str = "pending"
+
+
+class AdminRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=3, description="Mandatory explanation for verification rejection")
+
+
+class AdminVerificationAuditResponse(BaseModel):
+    workerId: str
+    action: str
+    reviewerUid: str
+    timestamp: str
+    reason: Optional[str] = None
+
+

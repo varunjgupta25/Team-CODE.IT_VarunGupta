@@ -6,6 +6,26 @@ All notable changes to RepairBuddy are documented here.
 
 ## [Unreleased] — 2026-11-05
 
+### Security & Compliance — Worker ID & Selfie Verification (Fix 3)
+
+**Problem:** Worker verification previously stored only docType + last-4 digits with no real document upload, no selfie verification, no reject-with-reason, and `/admin/verifications/pending` leaked full worker documents.
+
+**Fix:**
+- `services/storage_provider.py` *(new)* — DPDP-compliant private object storage abstraction (`LocalStorageProvider` and `FirebaseStorageProvider`). No permanent public URLs.
+- `services/image_utils.py` *(new)* — Validates magic bytes (blocks spoofed extensions), enforces max 5MB, verifies via Pillow, re-encodes clean image to strip all EXIF metadata.
+- `routers/workers.py` — `POST /workers/verify/upload` accepts ID card photo + live selfie, document type, document number (stores only last-4 digits masked).
+- Rate limits enforced: max 5 submissions per worker per 24 hours; max 3 rejections before account is locked pending admin reset.
+- `routers/admin.py` —
+  - `GET /admin/verifications/pending` returns a trimmed DTO (`uid`, `name`, `docType`, `last4`, `submittedAt`, `attemptCount`, `status`) to prevent data leakage.
+  - `GET /admin/verifications/{uid}/documents/{doc_type}` streams document images directly with admin authentication. Non-admins or cross-worker access gets 403.
+  - `POST /admin/verifications/{uid}/approve` approves worker, permanently deletes stored images, and writes an immutable audit record to `verification_audits`.
+  - `POST /admin/verifications/{uid}/reject` requires a mandatory reason, sets status to `rejected`, deletes images, increments rejectionCount, and writes audit record.
+  - `POST /admin/verifications/{uid}/reset_attempts` unlocks worker if maximum rejections reached.
+- Frontend: `VerificationCard.jsx` supports ID + selfie upload with live preview, displays rejection reasons with resubmission form; `AdminPage.jsx` includes document inspection modal with approve and reject-with-reason dialog. Mock mode in `mockStore.js` and `api/index.js` mirrored.
+- Tests: 10 new pytest cases in `tests/test_verification_uploads.py` covering uploads, magic bytes, spoofing, oversized files, auth, rate limiting, trimmed DTOs, streaming authorization, image deletion, and audit logging.
+
+---
+
 ### Security — Firebase Auth Hardening
 
 **Problem:** `core/auth.py` had a dev-token fallthrough (`token-customer-<uid>`, `token-worker-<uid>`, `token-admin-<uid>`, `dev-`, `mock-` prefixes) that was never gated on ENV. `render.yaml` set `USE_MOCK_FIREBASE=true` in production, so `Bearer admin_user` worked on the live API.
@@ -153,3 +173,4 @@ cd frontend && npm run build
 # Local e2e against running server
 python scripts/e2e_deployed.py http://127.0.0.1:8000
 ```
+

@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, status
 from pydantic import BaseModel, Field
 from core.auth import get_current_user, require_role
 from models.worker import (
@@ -8,7 +8,10 @@ from models.worker import (
     WorkerVerifyResponse,
 )
 from services.matching import match_workers_for_job
-from services.verification_service import request_worker_verification
+from services.verification_service import (
+    request_worker_verification,
+    submit_worker_verification_upload,
+)
 
 router = APIRouter(tags=["Workers"])
 
@@ -33,11 +36,41 @@ def api_request_verification(
     current_user: Dict[str, Any] = Depends(require_role(["worker"]))
 ):
     """
-    Worker requests ID verification.
+    Worker requests ID verification (metadata only).
     Only workers may call this endpoint (customers receive 403 Forbidden).
     """
     worker_id = current_user.get("uid")
     return request_worker_verification(worker_id, payload or WorkerVerifyRequest())
+
+
+@router.post("/workers/verify/upload", response_model=WorkerVerifyResponse)
+async def api_upload_verification(
+    documentType: str = Form("aadhaar"),
+    documentNumber: Optional[str] = Form(None),
+    id_document: UploadFile = File(..., description="ID document image (JPEG/PNG, max 5MB)"),
+    selfie: UploadFile = File(..., description="Live face selfie (JPEG/PNG, max 5MB)"),
+    current_user: Dict[str, Any] = Depends(require_role(["worker"]))
+):
+    """
+    Worker uploads ID photo and selfie for manual admin verification:
+    - JPEG / PNG only, max 5MB
+    - Magic bytes validated (spoofed extensions rejected)
+    - EXIF stripped and re-encoded
+    - Stored in DPDP-compliant private storage (no public URL)
+    """
+    worker_id = current_user.get("uid")
+    id_bytes = await id_document.read()
+    selfie_bytes = await selfie.read()
+
+    return submit_worker_verification_upload(
+        worker_id=worker_id,
+        document_type=documentType,
+        document_number=documentNumber,
+        id_doc_bytes=id_bytes,
+        id_doc_filename=id_document.filename or "id_document.jpg",
+        selfie_bytes=selfie_bytes,
+        selfie_filename=selfie.filename or "selfie.jpg"
+    )
 
 
 class WorkerAvailabilityPayload(BaseModel):

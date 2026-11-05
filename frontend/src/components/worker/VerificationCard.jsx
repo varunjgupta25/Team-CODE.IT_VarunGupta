@@ -13,6 +13,9 @@ import {
   AlertCircle,
   X,
   Sparkles,
+  Camera,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react';
 
 const DOC_TYPES = [
@@ -25,7 +28,10 @@ export function VerificationCard() {
   const { user, updateUser, refreshWorkerProfile } = useAuthStore();
   const [docType, setDocType] = useState('aadhaar');
   const [docNumber, setDocNumber] = useState('');
-  const [localPhotoPreview, setLocalPhotoPreview] = useState(null);
+  const [idFile, setIdFile] = useState(null);
+  const [idPreview, setIdPreview] = useState(null);
+  const [selfieFile, setSelfieFile] = useState(null);
+  const [selfiePreview, setSelfiePreview] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState('');
 
@@ -38,18 +44,32 @@ export function VerificationCard() {
 
   const isVerified = Boolean(user?.verified);
   const isPending = user?.verificationStatus === 'pending';
+  const isRejected = user?.verificationStatus === 'rejected';
   const trust = user ? computeTrust(user) : { score: 60, tier: 'Bronze' };
 
-  // Local document photo preview only - never uploaded or sent
-  const handlePhotoSelect = (e) => {
+  const handleIdFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        useToastStore.getState().error('Image must be under 5MB');
+        useToastStore.getState().error('ID Document image must be under 5MB');
         return;
       }
-      const previewUrl = URL.createObjectURL(file);
-      setLocalPhotoPreview(previewUrl);
+      setIdFile(file);
+      setIdPreview(URL.createObjectURL(file));
+      setValidationError('');
+    }
+  };
+
+  const handleSelfieSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        useToastStore.getState().error('Selfie photo must be under 5MB');
+        return;
+      }
+      setSelfieFile(file);
+      setSelfiePreview(URL.createObjectURL(file));
+      setValidationError('');
     }
   };
 
@@ -60,7 +80,7 @@ export function VerificationCard() {
     if (type === 'aadhaar') {
       if (!/^\d{12}$/.test(clean)) return 'Aadhaar must be exactly 12 numeric digits';
     } else if (type === 'pan') {
-      if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(clean)) return 'PAN must follow format: ABCDE1234F (5 letters, 4 digits, 1 letter)';
+      if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(clean)) return 'PAN must follow format: ABCDE1234F';
     } else if (type === 'voter_id') {
       if (!/^[A-Z0-9]{10}$/.test(clean)) return 'Voter ID must be 10 alphanumeric characters';
     }
@@ -77,22 +97,41 @@ export function VerificationCard() {
       return;
     }
 
+    if (!idFile) {
+      setValidationError('Please upload a photo of your ID document');
+      return;
+    }
+
+    if (!selfieFile) {
+      setValidationError('Please upload a clear live selfie photo');
+      return;
+    }
+
     const cleanNum = docNumber.replace(/[\s-]/g, '').toUpperCase();
     setIsSubmitting(true);
 
     try {
-      const res = await api.verifyWorker({
-        documentType: docType,
-        documentNumber: cleanNum,
-      });
+      const formData = new FormData();
+      formData.append('documentType', docType);
+      formData.append('documentNumber', cleanNum);
+      formData.append('id_document', idFile);
+      formData.append('selfie', selfieFile);
+
+      const res = await api.uploadWorkerVerification(formData);
 
       updateUser({
         verificationStatus: 'pending',
+        documentType: docType,
+        last4: cleanNum.slice(-4),
+        rejectionReason: null,
       });
 
-      useToastStore.getState().success(res?.message || 'Verification request submitted! Awaiting administrator approval.');
+      useToastStore.getState().success(res?.message || 'Verification submitted for manual review!');
       setDocNumber('');
-      setLocalPhotoPreview(null);
+      setIdFile(null);
+      setIdPreview(null);
+      setSelfieFile(null);
+      setSelfiePreview(null);
     } catch (error) {
       useToastStore.getState().error(error.message || 'Failed to submit verification');
     } finally {
@@ -147,7 +186,7 @@ export function VerificationCard() {
               </span>
             </div>
             <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
-              Your government ID document has been submitted. Our compliance team is verifying your details. You will appear in customer job searches as soon as approved!
+              Your government ID document and selfie have been securely received. Our compliance team is verifying your details. You will appear in customer searches as soon as approved!
             </p>
           </div>
         </div>
@@ -168,24 +207,42 @@ export function VerificationCard() {
     );
   }
 
-  // State 3: Unverified - Form to Get Verified
+  // State 3: Rejected / Unverified - Form to Upload & Verify
   const selectedDocObj = DOC_TYPES.find((d) => d.id === docType) || DOC_TYPES[0];
 
   return (
     <div className="bg-white rounded-3xl p-5 border-2 border-brand-200 shadow-md space-y-4">
+      {/* Rejection Alert if rejected */}
+      {isRejected && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2">
+          <div className="flex items-center gap-2 text-red-800 font-extrabold text-xs">
+            <AlertTriangle className="w-4 h-4 text-red-600" />
+            <span>Verification Rejected</span>
+          </div>
+          <p className="text-xs text-red-700 leading-relaxed">
+            <span className="font-semibold">Reason:</span> {user?.rejectionReason || 'Document could not be verified. Please re-upload clearer photos.'}
+          </p>
+          <p className="text-[10px] text-red-500">
+            Please re-upload a clear, readable ID document and live selfie below.
+          </p>
+        </div>
+      )}
+
       <div className="flex items-start gap-3">
         <div className="w-11 h-11 rounded-2xl bg-brand-600 text-white flex items-center justify-center shadow-md shadow-brand-500/25 shrink-0">
           <ShieldCheck className="w-6 h-6" />
         </div>
         <div>
           <div className="flex items-center gap-1.5">
-            <h2 className="font-extrabold text-sm text-slate-900">Get Verified &amp; Start Earning</h2>
+            <h2 className="font-extrabold text-sm text-slate-900">
+              {isRejected ? 'Resubmit Verification' : 'Get Verified & Start Earning'}
+            </h2>
             <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 text-[10px] font-bold">
               Required
             </span>
           </div>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            RepairBuddy only matches 100% verified providers to protect customers and workers.
+            Upload your Govt ID &amp; live selfie. Images are encrypted and private.
           </p>
         </div>
       </div>
@@ -234,60 +291,100 @@ export function VerificationCard() {
             />
             <FileText className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
           </div>
-          {validationError && (
-            <p className="text-[10px] text-red-600 font-semibold flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" />
-              {validationError}
-            </p>
-          )}
         </div>
 
-        {/* Optional Local Photo Preview (Never transmitted) */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <label className="text-[11px] font-bold text-slate-700">
-              Document Photo (Optional Preview)
+        {/* Two-Column Uploads: ID Document + Selfie */}
+        <div className="grid grid-cols-2 gap-2.5 pt-1">
+          {/* 1. ID Photo */}
+          <div className="space-y-1">
+            <label className="block text-[10px] font-bold text-slate-700">
+              1. ID Card Photo *
             </label>
-            <span className="text-[10px] text-slate-400">Local-only</span>
+            {idPreview ? (
+              <div className="relative rounded-2xl overflow-hidden border border-slate-200 h-24 bg-slate-100">
+                <img src={idPreview} alt="ID preview" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIdFile(null);
+                    setIdPreview(null);
+                  }}
+                  className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white hover:bg-black"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center p-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-brand-400 bg-slate-50/50 cursor-pointer text-slate-600 transition h-24 text-center">
+                <Upload className="w-4 h-4 text-brand-600 mb-1" />
+                <span className="text-[10px] font-bold">Front of ID</span>
+                <span className="text-[8px] text-slate-400">JPG/PNG &lt; 5MB</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  onChange={handleIdFileSelect}
+                  className="hidden"
+                />
+              </label>
+            )}
           </div>
 
-          {localPhotoPreview ? (
-            <div className="relative rounded-2xl overflow-hidden border border-slate-200 w-full h-28 bg-slate-100">
-              <img
-                src={localPhotoPreview}
-                alt="Document preview"
-                className="w-full h-full object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => setLocalPhotoPreview(null)}
-                className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white hover:bg-black"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : (
-            <label className="flex items-center justify-center gap-2 p-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-brand-400 bg-slate-50/50 cursor-pointer text-slate-600 transition">
-              <Upload className="w-4 h-4 text-brand-600" />
-              <span className="text-xs font-medium">Select photo for inspection</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoSelect}
-                className="hidden"
-              />
+          {/* 2. Selfie */}
+          <div className="space-y-1">
+            <label className="block text-[10px] font-bold text-slate-700">
+              2. Live Face Selfie *
             </label>
-          )}
+            {selfiePreview ? (
+              <div className="relative rounded-2xl overflow-hidden border border-slate-200 h-24 bg-slate-100">
+                <img src={selfiePreview} alt="Selfie preview" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelfieFile(null);
+                    setSelfiePreview(null);
+                  }}
+                  className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white hover:bg-black"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center p-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-brand-400 bg-slate-50/50 cursor-pointer text-slate-600 transition h-24 text-center">
+                <Camera className="w-4 h-4 text-brand-600 mb-1" />
+                <span className="text-[10px] font-bold">Take Selfie</span>
+                <span className="text-[8px] text-slate-400">Clear face photo</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  capture="user"
+                  onChange={handleSelfieSelect}
+                  className="hidden"
+                />
+              </label>
+            )}
+          </div>
         </div>
+
+        {validationError && (
+          <p className="text-[10px] text-red-600 font-semibold flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" />
+            {validationError}
+          </p>
+        )}
+
+        {/* Privacy Note */}
+        <p className="text-[10px] text-slate-400 leading-tight">
+          🔒 DPDP compliant: Images are securely stored in private storage and permanently purged once verified.
+        </p>
 
         {/* Submit Verification Request */}
         <button
           type="submit"
-          disabled={isSubmitting || !docNumber.trim()}
+          disabled={isSubmitting || !docNumber.trim() || !idFile || !selfieFile}
           className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-extrabold text-xs shadow-md shadow-brand-500/25 active:scale-95 transition-all flex items-center justify-center gap-1.5"
         >
-          <ShieldCheck className="w-4 h-4" />
-          <span>{isSubmitting ? 'Submitting...' : 'Submit ID for Verification'}</span>
+          {isRejected ? <RotateCcw className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+          <span>{isSubmitting ? 'Uploading & Encrypting...' : isRejected ? 'Resubmit Verification' : 'Upload & Submit for Verification'}</span>
         </button>
       </form>
     </div>

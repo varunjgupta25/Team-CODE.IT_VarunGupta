@@ -490,6 +490,87 @@ export const mockStore = {
     };
   },
 
+  // POST /workers/verify/upload
+  async uploadWorkerVerification(formData) {
+    await delay(200);
+    const sessionUser = storage.get('rb_auth_user_session', null);
+    const workerUid = sessionUser?.uid || 'worker_elec_1';
+    const workers = getWorkers();
+    const worker = workers.find((w) => w.uid === workerUid || (workerUid === 'worker_plumber_unverified' && w.uid === 'w_plumb_unverified'));
+
+    const docType = (formData && typeof formData.get === 'function' ? formData.get('documentType') : null) || 'aadhaar';
+    const docNum = (formData && typeof formData.get === 'function' ? formData.get('documentNumber') : null) || '9876';
+    const cleanNum = docNum.replace(/[\s-]/g, '');
+    const last4 = cleanNum.slice(-4);
+
+    if (worker) {
+      worker.verificationStatus = 'pending';
+      worker.documentType = docType;
+      worker.documentNumberMasked = `•••• ${last4}`;
+      worker.last4 = last4;
+      worker.requestedAt = new Date().toISOString();
+      worker.hasIdDocument = true;
+      worker.hasSelfie = true;
+      worker.rejectionReason = null;
+      worker.attemptCount = (worker.attemptCount || 0) + 1;
+      saveWorkers(workers);
+    }
+
+    if (sessionUser && sessionUser.uid === workerUid) {
+      sessionUser.verificationStatus = 'pending';
+      sessionUser.rejectionReason = null;
+      sessionUser.last4 = last4;
+      storage.set('rb_auth_user_session', sessionUser);
+    }
+
+    return {
+      status: 'pending',
+      workerId: workerUid,
+      message: 'Verification documents uploaded and submitted for review successfully.',
+    };
+  },
+
+  // POST /admin/verifications/{uid}/reject
+  async rejectWorkerVerification(workerUid, reason) {
+    await delay(150);
+    const workers = getWorkers();
+    const worker = workers.find((w) => w.uid === workerUid || (workerUid === 'worker_plumber_unverified' && w.uid === 'w_plumb_unverified') || (workerUid === 'w_plumb_unverified' && w.uid === 'worker_plumber_unverified'));
+    if (!worker) {
+      throw new Error(`Worker with UID '${workerUid}' not found`);
+    }
+
+    worker.verified = false;
+    worker.verificationStatus = 'rejected';
+    worker.rejectionReason = reason;
+    worker.rejectionCount = (worker.rejectionCount || 0) + 1;
+    worker.hasIdDocument = false;
+    worker.hasSelfie = false;
+    saveWorkers(workers);
+
+    const sessionUser = storage.get('rb_auth_user_session', null);
+    if (sessionUser && (sessionUser.uid === worker.uid || sessionUser.uid === workerUid)) {
+      sessionUser.verified = false;
+      sessionUser.verificationStatus = 'rejected';
+      sessionUser.rejectionReason = reason;
+      storage.set('rb_auth_user_session', sessionUser);
+    }
+
+    return {
+      status: 'rejected',
+      workerId: workerUid,
+      verified: false,
+      reason,
+    };
+  },
+
+  async getVerificationDocumentBlobUrl(workerUid, docType) {
+    await delay(100);
+    // Return sample image in mock mode
+    return docType === 'selfie'
+      ? 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=400&auto=format&fit=crop&q=80'
+      : 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=400&auto=format&fit=crop&q=80';
+  },
+
   // POST /admin/verifications/{uid}/approve
   async approveWorkerVerification(workerUid) {
     await delay(150);
@@ -525,7 +606,19 @@ export const mockStore = {
   async getPendingVerifications() {
     await delay(100);
     const workers = getWorkers();
-    return workers.filter((w) => !w.verified || w.verificationStatus === 'pending');
+    return workers
+      .filter((w) => !w.verified || w.verificationStatus === 'pending')
+      .map((w) => ({
+        uid: w.uid,
+        name: w.name,
+        docType: w.documentType || 'aadhaar',
+        last4: w.last4 || (w.documentNumberMasked ? w.documentNumberMasked.replace('••••', '').trim() : '1098'),
+        submittedAt: w.requestedAt || new Date().toISOString(),
+        attemptCount: w.attemptCount || 1,
+        status: w.verificationStatus || 'pending',
+        hasIdDocument: true,
+        hasSelfie: true,
+      }));
   },
 
   // GET /route?jobId=&workerId=

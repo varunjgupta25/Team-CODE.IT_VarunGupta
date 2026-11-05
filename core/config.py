@@ -43,5 +43,9 @@ class Settings(BaseSettings):
     # Auto-confirm period in hours for awaiting_confirmation jobs
     AUTO_CONFIRM_HOURS: float = 48.0
 
+    # Private Storage Configuration (DPDP compliant)
+    PRIVATE_STORAGE_PATH: str = "data/private_uploads"
+    FIREBASE_STORAGE_BUCKET: str = ""
+
 
 settings = Settings()

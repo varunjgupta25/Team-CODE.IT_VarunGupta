@@ -32,6 +32,9 @@ firebase*.json
 
 # In-memory store snapshot (test artefact)
 data/store.json
+data/private_uploads/
+
+Untitled-1.txt
 
 # Pytest / coverage
 .pytest_cache/
