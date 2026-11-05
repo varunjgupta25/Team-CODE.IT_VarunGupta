@@ -109,10 +109,7 @@ async def live_activity_logger(request: Request, call_next):
     response = await call_next(request)
 
     if action_label:
-        print(f"\n=======================================================")
-        print(f"{action_label}")
-        print(f"--> {method} {path} (HTTP {response.status_code})")
-        print(f"=======================================================\n", flush=True)
+        logger.info("%s --> %s %s (HTTP %s)", action_label, method, path, response.status_code)
 
     return response
 
