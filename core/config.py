@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     # Transit Speed in km/h for ETA calculation (PRD: 25 km/h)
     TRANSIT_SPEED_KMH: float = 25.0
 
+    # Trust Engine & Bayesian Rating Parameters
+    BAYESIAN_GLOBAL_MEAN: float = 4.5
+    BAYESIAN_MIN_WEIGHT: float = 5.0
+    AUTO_FLAG_THRESHOLD: int = 3
+    AUTO_FLAG_WINDOW_HOURS: int = 48
+
     @model_validator(mode="after")
     def assemble_environment_and_cors(self) -> "Settings":
         # 1. Standardize ENV / ENVIRONMENT

@@ -1,14 +1,11 @@
 from typing import Any, Dict, List
 from fastapi import APIRouter, Depends
 from core.auth import require_role
-from models.worker import AdminApproveResponse
-from services.verification_service import approve_worker_verification
+from models.worker import AdminApproveResponse, AdminRejectResponse, PendingVerificationWorker
+from services.verification_service import approve_worker_verification, reject_worker_verification
 from core.database import db
 
 router = APIRouter(tags=["Admin"])
-
-
-from models.worker import AdminApproveResponse, PendingVerificationWorker
 
 @router.get("/admin/verifications", response_model=List[PendingVerificationWorker])
 def api_get_verifications_queue(
@@ -61,3 +58,15 @@ def api_approve_verification(
     Non-admin callers receive 403 Forbidden.
     """
     return approve_worker_verification(uid)
+
+
+@router.post("/admin/verifications/{uid}/reject", response_model=AdminRejectResponse)
+def api_reject_verification(
+    uid: str,
+    current_user: Dict[str, Any] = Depends(require_role(["admin"]))
+):
+    """
+    Admin rejects a worker verification request. Sets verified = False, verificationStatus = 'rejected'.
+    Non-admin callers receive 403 Forbidden.
+    """
+    return reject_worker_verification(uid)

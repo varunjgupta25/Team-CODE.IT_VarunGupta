@@ -75,3 +75,28 @@ def approve_worker_verification(
         "workerId": worker_uid,
         "verified": True
     }
+
+
+def reject_worker_verification(
+    worker_uid: str,
+    reason: str = "Verification criteria not met"
+) -> Dict[str, Any]:
+    worker = db.get_document("workers", worker_uid)
+    if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Worker with UID '{worker_uid}' not found"
+        )
+
+    db.update_document("workers", worker_uid, {
+        "verified": False,
+        "verificationStatus": "rejected",
+        "rejectionReason": reason
+    })
+
+    return {
+        "status": "rejected",
+        "workerId": worker_uid,
+        "verified": False,
+        "message": reason
+    }

@@ -89,3 +89,47 @@ def test_admin_approves_worker_verification_and_worker_appears_in_match(
     assert res_match2.status_code == 200
     matched_uids_after = [m["worker"]["uid"] for m in res_match2.json()]
     assert wid in matched_uids_after
+
+
+def test_admin_rejects_worker_verification(client, auth_admin_headers, auth_customer_headers):
+    """
+    1. Non-admin calls reject -> 403 Forbidden.
+    2. Admin rejects unknown worker -> 404 Not Found.
+    3. Admin rejects valid worker -> verified=False, verificationStatus=rejected.
+    """
+    wid = "worker_to_reject_001"
+    db.set_document("workers", wid, {
+        "uid": wid,
+        "name": "Rohan Plumber",
+        "skills": ["plumber"],
+        "rates": {"plumber": 300.0},
+        "isAvailableNow": True,
+        "verified": False,
+        "verificationStatus": "pending",
+        "rating": 4.5,
+        "jobsDone": 5,
+        "location": {"lat": 19.2825, "lng": 72.8570},
+        "serviceRadiusKm": 5.0,
+        "isFlagged": False
+    })
+
+    # 1. Non-admin caller receives 403
+    res_unauth = client.post(f"/admin/verifications/{wid}/reject", headers=auth_customer_headers)
+    assert res_unauth.status_code == 403
+
+    # 2. Admin rejects unknown worker -> 404
+    res_404 = client.post("/admin/verifications/unknown_worker_999/reject", headers=auth_admin_headers)
+    assert res_404.status_code == 404
+
+    # 3. Admin rejects valid worker -> 200
+    res_reject = client.post(f"/admin/verifications/{wid}/reject", headers=auth_admin_headers)
+    assert res_reject.status_code == 200
+    data = res_reject.json()
+    assert data["status"] == "rejected"
+    assert data["verified"] is False
+    assert data["workerId"] == wid
+
+    # Worker record in DB is updated
+    worker_doc = db.get_document("workers", wid)
+    assert worker_doc["verified"] is False
+    assert worker_doc["verificationStatus"] == "rejected"

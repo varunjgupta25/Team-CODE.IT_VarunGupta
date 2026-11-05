@@ -255,6 +255,11 @@ def cancel_job(job_id: str, caller_uid: str, caller_role: str) -> Dict[str, Any]
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot cancel a job that has already been completed"
             )
+        if current_status == "in_progress" and caller_role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot cancel a job that is already in progress. Contact support."
+            )
         if current_status == "cancelled":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

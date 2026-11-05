@@ -25,18 +25,23 @@ Mathematical Formulations:
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-# Bayesian constants
-DEFAULT_GLOBAL_MEAN_RATING: float = 4.5  # C
-DEFAULT_MIN_REVIEWS_WEIGHT: float = 5.0  # m
+try:
+    from core.config import settings
+    DEFAULT_GLOBAL_MEAN_RATING: float = getattr(settings, "BAYESIAN_GLOBAL_MEAN", 4.5)
+    DEFAULT_MIN_REVIEWS_WEIGHT: float = getattr(settings, "BAYESIAN_MIN_WEIGHT", 5.0)
+    AUTO_FLAG_THRESHOLD: int = getattr(settings, "AUTO_FLAG_THRESHOLD", 3)
+    AUTO_FLAG_WINDOW_HOURS: int = getattr(settings, "AUTO_FLAG_WINDOW_HOURS", 48)
+except Exception:
+    DEFAULT_GLOBAL_MEAN_RATING = 4.5  # C
+    DEFAULT_MIN_REVIEWS_WEIGHT = 5.0  # m
+    AUTO_FLAG_THRESHOLD = 3
+    AUTO_FLAG_WINDOW_HOURS = 48
 
 # Account age constants
 MIN_AGE_THRESHOLD_DAYS: float = 7.0
 MATURE_ACCOUNT_DAYS: float = 30.0
 MIN_AGE_MULTIPLIER: float = 0.70
 
-# Abuse rule constants
-AUTO_FLAG_THRESHOLD: int = 3
-AUTO_FLAG_WINDOW_HOURS: int = 48
 UNDER_REVIEW_STATUS: str = "UNDER_REVIEW"
 
 VALID_REPORT_CATEGORIES: List[str] = [

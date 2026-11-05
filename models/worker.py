@@ -68,6 +68,13 @@ class AdminApproveResponse(BaseModel):
     verified: bool = True
 
 
+class AdminRejectResponse(BaseModel):
+    status: str = "rejected"
+    workerId: str
+    verified: bool = False
+    message: str = "Worker verification rejected"
+
+
 class PendingVerificationWorker(BaseModel):
     workerId: str
     name: str

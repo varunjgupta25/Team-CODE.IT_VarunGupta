@@ -318,3 +318,11 @@ def test_cancel_already_cancelled_job_returns_400(client, auth_customer_headers)
     assert "already cancelled" in res.json().get("detail", "").lower()
 
 
+def test_cancel_in_progress_job_returns_400_for_customer(client, auth_customer_headers):
+    """Customer cannot cancel a job that is already in progress."""
+    # job_test_in_progress is an existing seeded fixture with status 'in_progress'
+    res = client.post("/jobs/job_test_in_progress/cancel", headers=auth_customer_headers)
+    assert res.status_code == 400
+    assert "in progress" in res.json().get("detail", "").lower()
+
+
