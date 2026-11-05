@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 from core.database import db
 from models.report import ReportCreate
@@ -64,3 +64,71 @@ def create_report(
         })
 
     return doc_data
+
+
+def list_reports(status_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    List reports, optionally filtered by status (pending, resolved, dismissed).
+    """
+    reports = db.list_collection("reports")
+    if status_filter:
+        reports = [r for r in reports if r.get("status") == status_filter.lower().strip()]
+    return reports
+
+
+def get_report(report_id: str) -> Dict[str, Any]:
+    """
+    Retrieve single report by ID.
+    """
+    report = db.get_document("reports", report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report with ID '{report_id}' not found"
+        )
+    return report
+
+
+def resolve_report(report_id: str, action: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Mark a report as resolved with recorded action.
+    """
+    report = db.get_document("reports", report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report with ID '{report_id}' not found"
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    action_note = action or "Reviewed by admin"
+    db.update_document("reports", report_id, {
+        "status": "resolved",
+        "resolvedAt": now_iso,
+        "actionTaken": action_note
+    })
+    report["status"] = "resolved"
+    report["resolvedAt"] = now_iso
+    report["actionTaken"] = action_note
+    return report
+
+
+def dismiss_report(report_id: str) -> Dict[str, Any]:
+    """
+    Dismiss a report as unfounded.
+    """
+    report = db.get_document("reports", report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report with ID '{report_id}' not found"
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db.update_document("reports", report_id, {
+        "status": "dismissed",
+        "dismissedAt": now_iso
+    })
+    report["status"] = "dismissed"
+    report["dismissedAt"] = now_iso
+    return report

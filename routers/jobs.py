@@ -13,6 +13,11 @@ from services.job_service import (
     complete_job,
     cancel_job,
 )
+from services.customer_service import (
+    get_customer_profile,
+    update_customer_profile,
+    get_current_user_profile,
+)
 
 router = APIRouter(tags=["Jobs"])
 
@@ -66,6 +71,50 @@ def api_register_customer(
         }
         db.set_document("users", candidate_uid, user_data)
         return user_data
+
+
+class CustomerUpdatePayload(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=128)
+    phone: Optional[str] = Field(None, min_length=4, max_length=32)
+    location: Optional[Dict[str, Any]] = None
+
+
+@router.get("/customers/{customer_id}")
+def api_get_customer(
+    customer_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Retrieves customer profile with privacy masking.
+    Non-owners and non-admins receive a masked phone number.
+    """
+    return get_customer_profile(customer_id, requester=current_user)
+
+
+@router.patch("/customers/{customer_id}")
+def api_update_customer(
+    customer_id: str,
+    payload: CustomerUpdatePayload,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Updates customer profile. Customer themselves or admin only.
+    """
+    return update_customer_profile(
+        customer_id,
+        updates=payload.model_dump(exclude_unset=True),
+        requester=current_user
+    )
+
+
+@router.get("/users/me")
+def api_get_current_user(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Returns full profile for the authenticated user (customer or worker).
+    """
+    return get_current_user_profile(current_user)
 
 
 @router.post("/jobs", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
