@@ -9,7 +9,7 @@ Tests for:
 """
 
 import pytest
-from core.config import settings
+from core.config import Settings, settings
 
 
 def test_health_endpoint_root_and_api(client):
@@ -39,6 +39,24 @@ def test_cors_preflight_allows_frontend_origin(client):
         res = client.options(path, headers=headers)
         assert res.status_code == 200, f"CORS preflight failed for {path}"
         assert res.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+def test_settings_cors_resolution_and_wildcard_rejection(monkeypatch):
+    s_wildcard = Settings(
+        ENV="development",
+        CORS_ORIGINS="*,http://trusted.com"
+    )
+    assert "*" not in s_wildcard.CORS_ORIGINS
+    assert s_wildcard.CORS_ORIGINS.count("http://trusted.com") == 1
+
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("ENVIRONMENT", "development")
+
+    s_prod = Settings(ENV="production", CORS_ORIGINS="https://production-app.com")
+    assert s_prod.ENV == "production"
+    assert s_prod.CORS_ORIGINS == ["https://production-app.com"]
+    assert "http://localhost:5173" not in s_prod.CORS_ORIGINS
+    assert "http://127.0.0.1:5173" not in s_prod.CORS_ORIGINS
 
 
 def test_endpoints_mounted_on_both_prefixes(client, auth_customer_headers, auth_worker_headers):

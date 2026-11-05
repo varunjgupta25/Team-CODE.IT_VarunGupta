@@ -42,16 +42,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware for React frontend (localhost:5173) and production / preview origins
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-]
-if isinstance(settings.CORS_ORIGINS, list):
-    for o in settings.CORS_ORIGINS:
-        if o not in origins:
-            origins.append(o)
+# CORS middleware for frontend and deployment origins
+origins = settings.CORS_ORIGINS if isinstance(settings.CORS_ORIGINS, list) else []
 
 cors_kwargs = {
     "allow_origins": origins,

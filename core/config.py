@@ -1,6 +1,5 @@
-import os
-from typing import List, Optional, Union
-from pydantic import field_validator
+from typing import Any, List, Optional, Union
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,21 +12,50 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "RepairBuddy API"
     ENV: str = "development"
+    ENVIRONMENT: Optional[str] = None
     PORT: int = 8000
     HOST: str = "0.0.0.0"
 
     # CORS Configuration
-    CORS_ORIGINS: Union[str, List[str]] = "http://localhost:5173,http://127.0.0.1:5173"
+    CORS_ORIGINS: Union[str, List[str]] = ""
     CORS_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_environment_fields(cls, values: Any):
+        if not isinstance(values, dict):
+            return values
+        explicit_env = values.get("ENV")
+        if not explicit_env:
+            environment = values.get("ENVIRONMENT")
+            if environment:
+                values["ENV"] = environment
+        if not values.get("ENVIRONMENT") and values.get("ENV"):
+            values["ENVIRONMENT"] = values["ENV"]
+        return values
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
-    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+    def assemble_cors_origins(cls, v: Union[str, List[str]], info) -> List[str]:
         if isinstance(v, str):
-            return [i.strip() for i in v.split(",") if i.strip()]
+            origins = [i.strip() for i in v.split(",") if i.strip()]
         elif isinstance(v, list):
-            return v
-        return ["http://localhost:5173", "http://127.0.0.1:5173"]
+            origins = [i.strip() for i in v if isinstance(i, str) and i.strip()]
+        else:
+            origins = []
+
+        origins = [origin for origin in origins if origin != "*"]
+
+        env_value = str((info.data or {}).get("ENV", "development")).lower()
+        if env_value == "development":
+            for dev_origin in [
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:3000",
+            ]:
+                if dev_origin not in origins:
+                    origins.append(dev_origin)
+        return origins
 
     # Auto-seed configuration on startup
     AUTO_SEED: bool = True
