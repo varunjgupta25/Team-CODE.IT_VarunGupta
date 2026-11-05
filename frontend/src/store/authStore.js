@@ -1,10 +1,17 @@
 import { create } from 'zustand';
-import { storage } from '../lib/storage';
-import { ROLES } from '../types';
-import { api } from '../api';
-import { auth } from '../lib/firebase';
-import { signOut, onAuthStateChanged } from 'firebase/auth';
-import { useToastStore } from './toastStore';
+import { storage } from '../lib/storage.js';
+import { ROLES } from '../types/index.js';
+import { api } from '../api/index.js';
+import {
+  isFirebaseConfigured,
+  setupRecaptcha,
+  sendPhoneOtp,
+  verifyPhoneOtp,
+  signOutFirebase,
+  checkIsFirebaseAdmin,
+  subscribeToAuthChanges,
+} from '../lib/firebase.js';
+import { useJobStore } from './jobStore.js';
 
 const AUTH_USER_KEY = 'rb_auth_user_session';
 const AUTH_ROLE_KEY = 'rb_auth_role_session';
@@ -12,62 +19,121 @@ const AUTH_ROLE_KEY = 'rb_auth_role_session';
 const initialRole = storage.get(AUTH_ROLE_KEY, null);
 const initialUser = storage.get(AUTH_USER_KEY, null);
 
-// Helper: Check if error is network down or 5xx server error
-const isNetworkOr5xx = (err) => {
-  const status = err?.status || err?.response?.status;
-  // Network failures / timeouts have no response status code
-  if (!status) return true;
-  return status >= 500 && status < 600;
-};
-
-// Automatic retry with exponential backoff (max 3 attempts) for network and 5xx only.
-// Does NOT auto-retry 4xx; throws immediately.
-async function executeWithAutoRetry(fn, maxAttempts = 3, initialDelayMs = 500) {
-  let attempt = 0;
-  while (attempt < maxAttempts) {
-    try {
-      return await fn();
-    } catch (err) {
-      attempt++;
-      const status = err?.status || err?.response?.status;
-      // Do not auto-retry 4xx; show the error immediately
-      if (status && status >= 400 && status < 500) {
-        throw err;
-      }
-      if (attempt < maxAttempts && isNetworkOr5xx(err)) {
-        const delay = initialDelayMs * Math.pow(2, attempt - 1);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      } else {
-        throw err;
-      }
-    }
-  }
-}
-
 export const useAuthStore = create((set, get) => ({
   user: initialUser,
   role: initialRole,
+  isInitialized: !isFirebaseConfigured(),
   isAvailableNow: initialUser?.isAvailableNow ?? true,
+  pendingOtpPhone: null,
+  confirmationResult: null,
+  generatedOtp: null,
 
-  // Sync status for registration and profile syncing: 'idle' | 'syncing' | 'failed' | 'synced'
-  syncStatus: 'idle',
-  lastError: null,
-  lastSyncAction: null,
+  // Initialize and synchronize Firebase auth session
+  initAuth: () => {
+    if (!isFirebaseConfigured()) {
+      set({ isInitialized: true });
+      return () => {};
+    }
 
-  // Login as Customer (Strict role enforcement, with auto-retry and visible error handling)
-  // No raw tokens in localStorage - Firebase manages token persistence safely
-  loginAsCustomer: async (userData) => {
-    // Prevent double submission while a request is in flight
-    if (get().syncStatus === 'syncing') return;
+    const unsubscribe = subscribeToAuthChanges(async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const freshToken = await firebaseUser.getIdToken();
+          localStorage.setItem('rb_auth_token', freshToken);
+        } catch {
+          // ignore
+        }
 
-    set({
-      syncStatus: 'syncing',
-      lastError: null,
-      lastSyncAction: { type: 'registerCustomer', payload: userData },
+        const storedUser = storage.get(AUTH_USER_KEY, null);
+        const storedRole = storage.get(AUTH_ROLE_KEY, null);
+
+        if (storedUser && storedUser.uid === firebaseUser.uid) {
+          set({
+            user: storedUser,
+            role: storedRole,
+            isAvailableNow: storedUser.isAvailableNow ?? true,
+            isInitialized: true,
+          });
+        } else {
+          set({ isInitialized: true });
+        }
+      } else {
+        // If Firebase says no user is authenticated, clear token
+        if (isFirebaseConfigured() && !initialUser) {
+          localStorage.removeItem('rb_auth_token');
+          set({ user: null, role: null, isInitialized: true });
+        } else {
+          set({ isInitialized: true });
+        }
+      }
     });
 
+    return unsubscribe;
+  },
+
+  // Firebase Phone Auth: Request OTP via SMS (or mock fallback if unconfigured)
+  requestPhoneOtp: async (phoneNumber, containerId = 'recaptcha-container') => {
+    if (isFirebaseConfigured()) {
+      try {
+        const verifier = setupRecaptcha(containerId);
+        const confirmation = await sendPhoneOtp(phoneNumber, verifier);
+        set({
+          pendingOtpPhone: phoneNumber,
+          confirmationResult: confirmation,
+          generatedOtp: null,
+        });
+        return { isFirebase: true, confirmation };
+      } catch (err) {
+        console.error('[Auth] Firebase sendPhoneOtp failed:', err);
+        throw err;
+      }
+    }
+
+    // Fallback for offline mock development
+    const fakeOtp = '1234';
+    set({
+      pendingOtpPhone: phoneNumber,
+      confirmationResult: null,
+      generatedOtp: fakeOtp,
+    });
+    return { isFirebase: false, otp: fakeOtp };
+  },
+
+  // Firebase Phone Auth: Confirm OTP and resolve user credentials
+  confirmPhoneOtp: async (otpCode) => {
+    const { confirmationResult } = get();
+    if (confirmationResult && isFirebaseConfigured()) {
+      const userCred = await verifyPhoneOtp(confirmationResult, otpCode);
+      const idToken = await userCred.user.getIdToken();
+      localStorage.setItem('rb_auth_token', idToken);
+      return userCred.user;
+    }
+
+    // Mock verification fallback
+    const { generatedOtp, pendingOtpPhone } = get();
+    if (otpCode === (generatedOtp || '1234')) {
+      const phoneDigits = pendingOtpPhone ? pendingOtpPhone.replace(/\D/g, '') : 'default';
+      return { uid: `mock_user_${phoneDigits}` };
+    }
+    throw new Error('Invalid OTP code. Please try again.');
+  },
+
+  // Legacy helper for test compatibility
+  sendOtp: (phone) => {
+    const fakeOtp = '1234';
+    set({ pendingOtpPhone: phone, generatedOtp: fakeOtp });
+    return fakeOtp;
+  },
+
+  // Login as Customer (Strict role enforcement)
+  loginAsCustomer: async (userData) => {
+    const customerUid = userData?.uid || (isFirebaseConfigured() ? null : 'mock_customer_user');
+    if (!customerUid) {
+      throw new Error('Customer authentication failed: missing user ID.');
+    }
+
     const customerUser = {
-      uid: userData?.uid || `cust_${Date.now()}`,
+      uid: customerUid,
       name: userData?.name || 'Customer',
       phone: userData?.phone || '',
       role: ROLES.CUSTOMER,
@@ -79,54 +145,78 @@ export const useAuthStore = create((set, get) => ({
       },
     };
 
-    try {
-      // Automatic retry with exponential backoff for network/5xx; fails fast for 4xx
-      await executeWithAutoRetry(() =>
-        api.registerCustomer({
-          uid: customerUser.uid,
-          name: customerUser.name,
-          phone: customerUser.phone,
-          location: customerUser.location,
-        })
-      );
-
+    if (!isFirebaseConfigured()) {
       storage.set(AUTH_ROLE_KEY, ROLES.CUSTOMER);
       storage.set(AUTH_USER_KEY, customerUser);
-
+      localStorage.setItem('rb_auth_token', customerUser.uid);
       set({
         user: customerUser,
         role: ROLES.CUSTOMER,
         isAvailableNow: false,
-        syncStatus: 'synced',
-        lastError: null,
-        lastSyncAction: null,
+        pendingOtpPhone: null,
+        confirmationResult: null,
+        generatedOtp: null,
       });
       return customerUser;
-    } catch (err) {
-      const errorMessage = err?.message || 'Failed to register customer on server.';
-      set({
-        syncStatus: 'failed',
-        lastError: errorMessage,
-      });
-      useToastStore.getState().error(errorMessage);
-      throw err;
     }
-  },
 
-  // Login as Worker (Strict role enforcement, dynamic registration with auto-retry)
-  // No raw tokens in localStorage - Firebase manages token persistence safely
-  loginAsWorker: async (workerData) => {
-    // Prevent double submission while a request is in flight
-    if (get().syncStatus === 'syncing') return;
+    // Register with backend using fresh Bearer token
+    let isReturningUser = false;
+    try {
+      await api.registerCustomer({
+        name: customerUser.name,
+        phone: customerUser.phone,
+        location: customerUser.location,
+      });
+    } catch (err) {
+      if (err.status === 409 || err.response?.status === 409) {
+        // 409 means user already exists in backend.
+        // Check if existing account has a different role (Worker)
+        try {
+          const existingWorker = await api.getWorker(customerUser.uid);
+          if (existingWorker) {
+            throw new Error('This account is registered as a Service Worker. Please sign in via the Worker Portal.');
+          }
+        } catch (checkErr) {
+          if (checkErr.message?.includes('Worker Portal')) {
+            throw checkErr;
+          }
+          // Not found as worker -> existing customer
+        }
+        isReturningUser = true;
+      } else {
+        console.error('[Auth] Customer register failed:', err);
+        throw err;
+      }
+    }
+
+    // Reuse cached profile data if available for returning customer
+    const cachedUser = storage.get(AUTH_USER_KEY, null);
+    const finalUser = (isReturningUser && cachedUser && cachedUser.uid === customerUser.uid)
+      ? { ...customerUser, ...cachedUser, name: customerUser.name || cachedUser.name }
+      : customerUser;
+
+    storage.set(AUTH_ROLE_KEY, ROLES.CUSTOMER);
+    storage.set(AUTH_USER_KEY, finalUser);
 
     set({
-      syncStatus: 'syncing',
-      lastError: null,
-      lastSyncAction: { type: 'registerWorker', payload: workerData },
+      user: finalUser,
+      role: ROLES.CUSTOMER,
+      isAvailableNow: false,
+      pendingOtpPhone: null,
+      confirmationResult: null,
+      generatedOtp: null,
     });
+    return finalUser;
+  },
 
-    const isNewRegistration = !workerData?.uid;
-    const workerUid = workerData?.uid || `worker_${Date.now()}`;
+  // Login as Worker (Strict role enforcement, dynamic registration)
+  loginAsWorker: async (workerData) => {
+    const workerUid = workerData?.uid || (isFirebaseConfigured() ? null : 'mock_worker_user');
+    if (!workerUid) {
+      throw new Error('Worker authentication failed: missing user ID.');
+    }
+
     const skills = workerData?.skills && workerData.skills.length > 0 ? workerData.skills : ['plumber'];
     const rates = workerData?.rates || { [skills[0]]: 350 };
 
@@ -139,11 +229,11 @@ export const useAuthStore = create((set, get) => ({
       role: ROLES.WORKER,
       isAvailableNow: true,
       verified: workerData?.verified ?? false,
-      verificationStatus: workerData?.verificationStatus || 'unverified',
-      rating: workerData?.rating ?? null,
+      verificationStatus: workerData?.verificationStatus || (workerData?.verified ? 'approved' : 'unverified'),
+      rating: workerData?.rating ?? 5.0,
       jobsDone: workerData?.jobsDone ?? 0,
-      trustScore: workerData?.trustScore ?? null,
-      trustBadge: workerData?.trustBadge ?? null,
+      trustScore: workerData?.trustScore ?? 60.0,
+      trustBadge: workerData?.trustBadge ?? 'Bronze',
       avatarUrl: workerData?.avatarUrl || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80',
       location: workerData?.location || {
         lat: 19.2812,
@@ -152,71 +242,128 @@ export const useAuthStore = create((set, get) => ({
       },
     };
 
-    try {
-      if (isNewRegistration) {
-        await executeWithAutoRetry(() =>
-          api.registerWorker({
-            uid: workerUser.uid,
-            name: workerUser.name,
-            phone: workerUser.phone,
-            skills: workerUser.skills,
-            rates: workerUser.rates,
-            location: workerUser.location,
-          })
-        );
-      } else {
-        const existing = await executeWithAutoRetry(() => api.getWorker(workerUser.uid));
-        if (existing) {
-          workerUser.verified = Boolean(existing.verified);
-          workerUser.verificationStatus = existing.verificationStatus || (existing.verified ? 'approved' : 'unverified');
-          if (existing.trustScore !== undefined) workerUser.trustScore = existing.trustScore;
-          if (existing.trustBadge) workerUser.trustBadge = existing.trustBadge;
-        }
-      }
-
+    if (!isFirebaseConfigured()) {
       storage.set(AUTH_ROLE_KEY, ROLES.WORKER);
       storage.set(AUTH_USER_KEY, workerUser);
-
+      localStorage.setItem('rb_auth_token', workerUser.uid);
       set({
         user: workerUser,
         role: ROLES.WORKER,
         isAvailableNow: true,
-        syncStatus: 'synced',
-        lastError: null,
-        lastSyncAction: null,
+        pendingOtpPhone: null,
+        confirmationResult: null,
+        generatedOtp: null,
       });
       return workerUser;
-    } catch (err) {
-      const errorMessage = err?.message || 'Failed to register or sync worker on server.';
-      set({
-        syncStatus: 'failed',
-        lastError: errorMessage,
-      });
-      useToastStore.getState().error(errorMessage);
-      throw err;
     }
+
+    // Try registering new worker with backend
+    let isReturningWorker = false;
+    try {
+      const created = await api.registerWorker({
+        name: workerUser.name,
+        phone: workerUser.phone,
+        skills: workerUser.skills,
+        rates: workerUser.rates,
+        location: workerUser.location,
+      });
+      if (created) {
+        workerUser.verified = Boolean(created.verified);
+        workerUser.verificationStatus = created.verificationStatus || 'unverified';
+        workerUser.rating = created.rating ?? 5.0;
+        workerUser.jobsDone = created.jobsDone ?? 0;
+        workerUser.trustScore = created.trustScore ?? 60.0;
+        workerUser.trustBadge = created.trustBadge ?? 'Bronze';
+      }
+    } catch (err) {
+      if (err.status === 409 || err.response?.status === 409) {
+        // Worker already exists in backend, or existing account conflict
+        isReturningWorker = true;
+      } else {
+        console.error('[Auth] Worker register failed:', err);
+        throw err;
+      }
+    }
+
+    if (isReturningWorker) {
+      // Treat 409 as already registered: load worker profile with api.getWorker(uid)
+      try {
+        const existing = await api.getWorker(workerUser.uid);
+        if (existing) {
+          workerUser.name = existing.name || workerUser.name;
+          workerUser.skills = existing.skills && existing.skills.length > 0 ? existing.skills : workerUser.skills;
+          workerUser.rates = existing.rates || workerUser.rates;
+          workerUser.verified = Boolean(existing.verified);
+          workerUser.verificationStatus = existing.verificationStatus || (existing.verified ? 'approved' : 'unverified');
+          if (existing.trustScore !== undefined) workerUser.trustScore = existing.trustScore;
+          if (existing.trustBadge) workerUser.trustBadge = existing.trustBadge;
+          if (existing.jobsDone !== undefined) workerUser.jobsDone = existing.jobsDone;
+          if (existing.rating !== undefined) workerUser.rating = existing.rating;
+          if (existing.location) workerUser.location = existing.location;
+        } else {
+          // getWorker returned null/empty - user exists as customer!
+          throw new Error('This account is registered as a Customer. Please sign in via the Customer Portal.');
+        }
+      } catch (workerFetchErr) {
+        if (workerFetchErr.message?.includes('Customer Portal')) {
+          throw workerFetchErr;
+        }
+        if (workerFetchErr.status === 404 || workerFetchErr.response?.status === 404) {
+          throw new Error('This account is registered as a Customer. Please sign in via the Customer Portal.');
+        }
+        throw workerFetchErr;
+      }
+    }
+
+    storage.set(AUTH_ROLE_KEY, ROLES.WORKER);
+    storage.set(AUTH_USER_KEY, workerUser);
+
+    set({
+      user: workerUser,
+      role: ROLES.WORKER,
+      isAvailableNow: true,
+      pendingOtpPhone: null,
+      confirmationResult: null,
+      generatedOtp: null,
+    });
+    return workerUser;
   },
 
-  // Login as Admin
-  loginAsAdmin: () => {
+  // Login as Admin (Gated by Firebase admin custom claim)
+  loginAsAdmin: async (adminData) => {
+    const adminUid = adminData?.uid || (isFirebaseConfigured() ? null : 'mock_admin');
+    if (!adminUid) {
+      throw new Error('Admin authentication failed: missing user ID.');
+    }
+
+    if (isFirebaseConfigured()) {
+      const isAdmin = await checkIsFirebaseAdmin(true);
+      if (!isAdmin) {
+        throw new Error('Access denied: This phone number does not have administrator privileges.');
+      }
+    }
+
     const adminUser = {
-      uid: 'admin_user',
-      name: 'Super Admin',
-      phone: '+91 99999 00000',
+      uid: adminUid,
+      name: adminData?.name || 'Super Admin',
+      phone: adminData?.phone || '',
       role: ROLES.ADMIN,
-      avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+      avatarUrl: adminData?.avatarUrl || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
     };
 
     storage.set(AUTH_ROLE_KEY, ROLES.ADMIN);
     storage.set(AUTH_USER_KEY, adminUser);
+    if (!isFirebaseConfigured()) {
+      localStorage.setItem('rb_auth_token', adminUser.uid);
+    }
 
     set({
       user: adminUser,
       role: ROLES.ADMIN,
       isAvailableNow: false,
-      syncStatus: 'synced',
-      lastError: null,
-      lastSyncAction: null,
+      pendingOtpPhone: null,
+      confirmationResult: null,
+      generatedOtp: null,
     });
     return adminUser;
   },
@@ -231,20 +378,12 @@ export const useAuthStore = create((set, get) => ({
     return updated;
   },
 
-  // Refresh worker profile with auto-retry and visible error handling
+  // Refresh worker profile (verification status, rating, etc.)
   refreshWorkerProfile: async () => {
-    const { user, role, syncStatus } = get();
+    const { user, role } = get();
     if (role !== ROLES.WORKER || !user?.uid) return;
-    if (syncStatus === 'syncing') return;
-
-    set({
-      syncStatus: 'syncing',
-      lastError: null,
-      lastSyncAction: { type: 'refreshWorkerProfile' },
-    });
-
     try {
-      const fresh = await executeWithAutoRetry(() => api.getWorker(user.uid));
+      const fresh = await api.getWorker(user.uid);
       if (fresh) {
         const updated = {
           ...user,
@@ -256,70 +395,12 @@ export const useAuthStore = create((set, get) => ({
           trustBadge: fresh.trustBadge ?? user.trustBadge,
         };
         storage.set(AUTH_USER_KEY, updated);
-        set({
-          user: updated,
-          syncStatus: 'synced',
-          lastError: null,
-          lastSyncAction: null,
-        });
+        set({ user: updated });
         return updated;
       }
-      set({ syncStatus: 'synced', lastError: null, lastSyncAction: null });
-    } catch (err) {
-      const errorMessage = err?.message || 'Failed to sync worker profile from server.';
-      set({
-        syncStatus: 'failed',
-        lastError: errorMessage,
-      });
-      useToastStore.getState().error(errorMessage);
-      throw err;
+    } catch {
+      // Ignore background refresh failure
     }
-  },
-
-  // Re-run the last failed sync or register call
-  retryLastSync: async () => {
-    const { lastSyncAction, syncStatus } = get();
-    if (!lastSyncAction || syncStatus === 'syncing') return;
-    if (lastSyncAction.type === 'registerCustomer') {
-      return get().loginAsCustomer(lastSyncAction.payload);
-    }
-    if (lastSyncAction.type === 'registerWorker') {
-      return get().loginAsWorker(lastSyncAction.payload);
-    }
-    if (lastSyncAction.type === 'refreshWorkerProfile') {
-      return get().refreshWorkerProfile();
-    }
-  },
-
-  // Synchronize and restore session on page reload using Firebase onAuthStateChanged
-  initAuthListener: () => {
-    if (!auth) return () => {};
-    return onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const current = get().user;
-        const role = get().role || storage.get(AUTH_ROLE_KEY, ROLES.CUSTOMER);
-        if (!current) {
-          const cachedUser = storage.get(AUTH_USER_KEY, null);
-          const user = cachedUser || {
-            uid: firebaseUser.uid,
-            name: firebaseUser.displayName || 'User',
-            phone: firebaseUser.phoneNumber || '',
-            role,
-            verified: false,
-            verificationStatus: 'unverified',
-          };
-          set({ user, role });
-        }
-      } else {
-        // Firebase user signed out: clean up session unless using admin bypass
-        const current = get().user;
-        if (current && current.role !== ROLES.ADMIN && !import.meta.env.VITE_USE_MOCK) {
-          storage.remove(AUTH_USER_KEY);
-          storage.remove(AUTH_ROLE_KEY);
-          set({ user: null, role: null });
-        }
-      }
-    });
   },
 
   // Worker availability toggle (worker-only)
@@ -336,29 +417,37 @@ export const useAuthStore = create((set, get) => ({
 
     try {
       await api.updateWorkerAvailability(user.uid, nextVal);
-    } catch {
-      useToastStore.getState().error('Failed to update availability on server.');
+    } catch (err) {
+      console.error('Failed to update worker availability:', err);
     }
   },
 
-  // Log Out: Signs out of Firebase SDK, clears store state, cleans storage
+  // Log Out: Completely destroys session, calls Firebase signOut, and clears local state
   logout: async () => {
     try {
-      if (auth) {
-        await signOut(auth);
-      }
+      await signOutFirebase();
     } catch (err) {
-      console.warn('[Auth] Firebase sign-out notice:', err);
+      console.warn('Firebase signOut error:', err);
     }
     storage.remove(AUTH_USER_KEY);
     storage.remove(AUTH_ROLE_KEY);
+    localStorage.removeItem('rb_auth_token');
+
+    // Clean up job polling & active state
+    try {
+      useJobStore.getState().stopPolling();
+      useJobStore.setState({ currentJob: null, matchedWorkers: [], offers: [], nearbyJobs: [] });
+    } catch {
+      // safe fallback
+    }
+
     set({
       user: null,
       role: null,
       isAvailableNow: false,
-      syncStatus: 'idle',
-      lastError: null,
-      lastSyncAction: null,
+      pendingOtpPhone: null,
+      confirmationResult: null,
+      generatedOtp: null,
     });
   },
 }));

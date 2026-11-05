@@ -1,5 +1,6 @@
 export const storage = {
   get(key, defaultValue = null) {
+    if (typeof localStorage === 'undefined') return defaultValue;
     try {
       const item = localStorage.getItem(key);
       return item ? JSON.parse(item) : defaultValue;
@@ -10,6 +11,7 @@ export const storage = {
   },
 
   set(key, value) {
+    if (typeof localStorage === 'undefined') return;
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch (e) {
@@ -18,6 +20,7 @@ export const storage = {
   },
 
   remove(key) {
+    if (typeof localStorage === 'undefined') return;
     try {
       localStorage.removeItem(key);
     } catch (e) {

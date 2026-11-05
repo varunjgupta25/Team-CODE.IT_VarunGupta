@@ -1,34 +1,35 @@
 import axios from 'axios';
-import { auth } from '../lib/firebase';
-import { storage } from '../lib/storage';
+import { getFreshIdToken, signOutFirebase } from '../lib/firebase.js';
 
-// One-time migration on app load: delete old raw token keys from localStorage & sessionStorage
-if (typeof window !== 'undefined') {
-  try {
-    localStorage.removeItem('rb_auth_token');
-    localStorage.removeItem('rb_otp');
-    localStorage.removeItem('token');
-    sessionStorage.removeItem('rb_auth_token');
-    sessionStorage.removeItem('token');
-  } catch {}
-}
+const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {};
 
 // Resolve and sanitize backend API Base URL
-let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://repair-buddy.onrender.com/api';
+let rawBaseUrl =
+  env.VITE_API_BASE_URL ||
+  env.VITE_API_URL ||
+  'https://repair-buddy.onrender.com/api';
 
 if (typeof rawBaseUrl === 'string') {
   // Strip any accidental wrapping quotes
   rawBaseUrl = rawBaseUrl.trim().replace(/^["']|["']$/g, '');
-  // If the placeholder <your-render-service> was left unchanged in Vercel, replace it with repair-buddy
-  if (rawBaseUrl.includes('<your-render-service>') || rawBaseUrl.includes('<') || rawBaseUrl.includes('your-render-service')) {
+  // If the placeholder <your-render-service> or <render-service> was left unchanged in Vercel, replace it with repair-buddy
+  if (
+    rawBaseUrl.includes('<your-render-service>') ||
+    rawBaseUrl.includes('<render-service>') ||
+    rawBaseUrl.includes('<') ||
+    rawBaseUrl.includes('your-render-service')
+  ) {
     rawBaseUrl = rawBaseUrl
       .replace(/<your-render-service>/g, 'repair-buddy')
+      .replace(/<render-service>/g, 'repair-buddy')
       .replace(/your-render-service/g, 'repair-buddy')
       .replace(/<[^>]+>/g, 'repair-buddy');
   }
-  // Ensure protocol
+  // Ensure protocol (unless relative URL like /api)
   if (!rawBaseUrl.startsWith('http://') && !rawBaseUrl.startsWith('https://')) {
-    rawBaseUrl = `https://${rawBaseUrl}`;
+    if (!rawBaseUrl.startsWith('/')) {
+      rawBaseUrl = `https://${rawBaseUrl}`;
+    }
   }
   // Ensure /api suffix
   if (!rawBaseUrl.endsWith('/api')) {
@@ -44,63 +45,87 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
-// Attach fresh Firebase ID token per request (auto-refreshed by the Firebase Web SDK)
-// No raw tokens stored or read from localStorage/sessionStorage
+// Attach fresh Firebase ID token if present (auto-refreshed per request)
 apiClient.interceptors.request.use(
   async (config) => {
-    if (auth?.currentUser) {
-      try {
-        const idToken = await auth.currentUser.getIdToken();
-        if (idToken) {
-          config.headers.Authorization = `Bearer ${idToken}`;
-        }
-      } catch (err) {
-        console.warn('[API Client] Failed to retrieve fresh Firebase ID token:', err);
-      }
+    // If payload is FormData, remove Content-Type so axios computes multipart boundary automatically
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
+
+    let token = null;
+    try {
+      token = await getFreshIdToken(false);
+    } catch {
+      token = null;
+    }
+    if (!token) {
+      token = localStorage.getItem('rb_auth_token');
+    }
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Response interceptor: standard error formatting & 401 force-refresh retry
+// Standard error formatting with selective retry for 401 token refresh and network/5xx errors
 apiClient.interceptors.response.use(
   (response) => response.data,
   async (error) => {
-    const originalRequest = error.config;
+    const config = error.config;
     const status = error.response?.status;
 
-    // On 401, force-refresh once with getIdToken(true) and retry; if it still fails, sign out and redirect to login
-    if (status === 401 && originalRequest && !originalRequest._retry && auth?.currentUser) {
-      originalRequest._retry = true;
+    // Handle 401 Unauthorized: Attempt a single token force-refresh & retry
+    if (status === 401 && config && !config._authRetry) {
+      config._authRetry = true;
       try {
-        const refreshedToken = await auth.currentUser.getIdToken(true);
-        if (refreshedToken) {
-          originalRequest.headers.Authorization = `Bearer ${refreshedToken}`;
-          return apiClient(originalRequest);
+        const freshToken = await getFreshIdToken(true);
+        if (freshToken) {
+          localStorage.setItem('rb_auth_token', freshToken);
+          config.headers.Authorization = `Bearer ${freshToken}`;
+          return apiClient(config);
         }
-      } catch {
-        // Force refresh failed
+      } catch (refreshErr) {
+        console.warn('[ApiClient] Token refresh attempt failed:', refreshErr);
       }
 
-      // If force refresh still fails or returns 401, sign out and clean up session
+      // If token refresh fails, clear stale token and notify session expiry
+      localStorage.removeItem('rb_auth_token');
       try {
-        await auth.signOut();
-      } catch {}
-      storage.remove('rb_auth_user_session');
-      storage.remove('rb_auth_role_session');
-
-      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
+        await signOutFirebase();
+      } catch {
+        // ignore
       }
     }
 
-    const message = error.response?.data?.detail || error.message || 'Network request failed';
-    const customError = new Error(message);
-    if (status) {
-      customError.status = status;
+    // Retry only network and 5xx errors (up to 2 times with exponential backoff)
+    const isNetworkOr5xx = !error.response || (status >= 500 && status < 600);
+    if (config && isNetworkOr5xx) {
+      config.__retryCount = (config.__retryCount || 0) + 1;
+      if (config.__retryCount <= 2) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * config.__retryCount));
+        return apiClient(config);
+      }
     }
-    customError.response = error.response;
-    return Promise.reject(customError);
+
+    // Format clean error message from FastAPI HTTPException detail or Axios error
+    let message = 'Network request failed';
+    const detail = error.response?.data?.detail;
+    if (typeof detail === 'string') {
+      message = detail;
+    } else if (Array.isArray(detail) && detail.length > 0) {
+      message = detail.map((d) => d.msg || `${d.loc?.join('.')}: ${d.type}`).join(', ');
+    } else if (error.response?.data?.message) {
+      message = error.response.data.message;
+    } else if (error.message) {
+      message = error.message;
+    }
+
+    const err = new Error(message);
+    err.status = status;
+    err.response = error.response;
+    return Promise.reject(err);
   }
 );

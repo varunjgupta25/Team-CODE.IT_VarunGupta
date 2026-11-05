@@ -20,14 +20,19 @@ export function ReviewPage() {
   const workerId = currentJob?.acceptedWorkerId;
   const allWorkers = storage.get('rb_mock_workers_v1', []);
   const worker = allWorkers.find((w) => w.uid === workerId) || null;
+  const resolvedWorkerId = worker?.uid || workerId || currentJob?.acceptedWorkerId;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!resolvedWorkerId) {
+      useToastStore.getState().error('Could not identify assigned worker for this review.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       await api.submitReview({
         jobId: jobId || currentJob?.id || 'job_test',
-        workerId: worker.uid,
+        workerId: resolvedWorkerId,
         rating,
         comment,
       });

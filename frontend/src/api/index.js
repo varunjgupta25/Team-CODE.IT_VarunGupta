@@ -1,12 +1,20 @@
-import { apiClient } from './client';
-import { mockStore } from './mockStore';
+import { apiClient } from './client.js';
+import { mockStore } from './mockStore.js';
+
+const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {};
 
 // Determines whether we run offline with mock store or connect to live FastAPI backend
-const isMock = import.meta.env.VITE_USE_MOCK !== 'false';
+// In production builds, default to LIVE unless explicitly forced via VITE_USE_MOCK === 'true'
+const isMock =
+  env.VITE_USE_MOCK === 'true' ||
+  (!env.PROD && env.VITE_USE_MOCK !== 'false');
 
 console.info(`[RepairBuddy API] Running in ${isMock ? 'MOCK' : 'LIVE'} mode.`);
 
 export const api = {
+  // Export active mode for UI diagnostics
+  isMockMode: () => isMock,
+
   // Jobs
   async createJob(payload) {
     if (isMock) return mockStore.createJob(payload);
@@ -18,13 +26,9 @@ export const api = {
     return apiClient.get(`/jobs/${jobId}`);
   },
 
-  // TODO: re-enable lat/lng/radiusKm when backend supports them
-  async getNearbyJobs(_workerCoords, _radiusKm) {
-    if (isMock) return mockStore.getNearbyJobs();
-    // STOP sending lat/lng/radiusKm from frontend until backend supports them.
-    // Backend ignores query params and uses the worker's saved profile location.
-    // TODO: re-enable lat/lng/radiusKm when backend supports them
-    return apiClient.get('/jobs/nearby');
+  async getNearbyJobs(workerCoords, radiusKm) {
+    if (isMock) return mockStore.getNearbyJobs(workerCoords, radiusKm);
+    return apiClient.get('/jobs/nearby', { params: { ...workerCoords, radiusKm } });
   },
 
   // Workers Match
@@ -36,7 +40,7 @@ export const api = {
   // Offers & Negotiation
   async getOffers(jobId) {
     if (isMock) return mockStore.getOffersForJob(jobId);
-    return apiClient.get(`/offers`, { params: { jobId } });
+    return apiClient.get('/offers', { params: { jobId } });
   },
 
   async createOffer(payload) {
@@ -46,7 +50,10 @@ export const api = {
 
   async counterOffer(offerId, payload) {
     if (isMock) return mockStore.counterOffer(offerId, payload);
-    return apiClient.post(`/offers/${offerId}/counter`, payload);
+    const counterBody = {
+      price: Number(payload.price),
+    };
+    return apiClient.post(`/offers/${offerId}/counter`, counterBody);
   },
 
   async acceptOffer(offerId) {
@@ -70,6 +77,16 @@ export const api = {
     return apiClient.post(`/jobs/${jobId}/complete`);
   },
 
+  async confirmJob(jobId) {
+    if (isMock) return mockStore.confirmJob(jobId);
+    return apiClient.post(`/jobs/${jobId}/confirm`);
+  },
+
+  async cancelJob(jobId) {
+    if (isMock) return mockStore.cancelJob?.(jobId);
+    return apiClient.post(`/jobs/${jobId}/cancel`);
+  },
+
   // Reviews, SOS, Reports
   async submitReview(payload) {
     if (isMock) return mockStore.submitReview(payload);
@@ -81,9 +98,30 @@ export const api = {
     return apiClient.post('/sos', payload);
   },
 
+  async setEmergencyContact(payload) {
+    if (isMock) return mockStore.setEmergencyContact(payload);
+    return apiClient.put('/users/me/emergency-contact', payload);
+  },
+
+  async getEmergencyContact() {
+    if (isMock) return mockStore.getEmergencyContact();
+    return apiClient.get('/users/me/emergency-contact');
+  },
+
+  async getAdminSosAlerts() {
+    if (isMock) return mockStore.getAdminSosAlerts();
+    const res = await apiClient.get('/admin/sos');
+    return Array.isArray(res) ? res : (res?.data || []);
+  },
+
   async reportUser(payload) {
-    if (isMock) return mockStore.reportUser(payload);
-    return apiClient.post('/reports', payload);
+    // FastAPI ReportCreate strictly requires workerId and reason
+    const normalized = {
+      ...payload,
+      workerId: payload.workerId || payload.reportedUserId,
+    };
+    if (isMock) return mockStore.reportUser(normalized);
+    return apiClient.post('/reports', normalized);
   },
 
   // Worker Profile Updates & Verification
@@ -97,16 +135,35 @@ export const api = {
     return apiClient.post('/workers/verify', payload);
   },
 
+  async uploadWorkerVerification(formData) {
+    if (isMock) return mockStore.uploadWorkerVerification(formData);
+    return apiClient.post('/workers/verify/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
   async approveWorkerVerification(workerUid) {
     if (isMock) return mockStore.approveWorkerVerification(workerUid);
     return apiClient.post(`/admin/verifications/${workerUid}/approve`);
   },
 
+  async rejectWorkerVerification(workerUid, reason) {
+    if (isMock) return mockStore.rejectWorkerVerification(workerUid, reason);
+    return apiClient.post(`/admin/verifications/${workerUid}/reject`, { reason });
+  },
+
+  async getVerificationDocumentBlobUrl(workerUid, docType) {
+    if (isMock) return mockStore.getVerificationDocumentBlobUrl(workerUid, docType);
+    const response = await apiClient.get(`/admin/verifications/${workerUid}/documents/${docType}`, {
+      responseType: 'blob',
+    });
+    return URL.createObjectURL(response);
+  },
+
   async getPendingVerifications() {
     if (isMock) return mockStore.getPendingVerifications();
-    // Let errors propagate so callers can distinguish "empty queue" from "request failed".
     const res = await apiClient.get('/admin/verifications/pending');
-    return Array.isArray(res) ? res : (res?.data ?? []);
+    return Array.isArray(res) ? res : (res?.data || []);
   },
 
   async registerWorker(payload) {

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { api } from '../api';
-import { useToastStore } from './toastStore';
+import { api } from '../api/index.js';
+import { useToastStore } from './toastStore.js';
 
 export const useJobStore = create((set, get) => ({
   currentJob: null,
@@ -69,12 +69,10 @@ export const useJobStore = create((set, get) => ({
   },
 
   // GET /jobs/nearby
-  // TODO: re-enable lat/lng/radiusKm when backend supports them
-  fetchNearbyJobs: async (_coords) => {
+  fetchNearbyJobs: async (coords) => {
     set({ isLoading: true });
     try {
-      // TODO: re-enable lat/lng/radiusKm when backend supports them
-      const raw = await api.getNearbyJobs();
+      const raw = await api.getNearbyJobs(coords);
       const jobs = (raw || []).map((item) => {
         if (item && item.job) {
           return {
@@ -88,8 +86,9 @@ export const useJobStore = create((set, get) => ({
       });
       set({ nearbyJobs: jobs, isLoading: false });
       return jobs;
-    } catch {
+    } catch (err) {
       set({ isLoading: false });
+      console.warn('Error fetching nearby jobs:', err);
       return [];
     }
   },
@@ -177,10 +176,23 @@ export const useJobStore = create((set, get) => ({
     try {
       const updatedJob = await api.completeJob(jobId);
       set({ currentJob: updatedJob });
-      useToastStore.getState().success('Job completed successfully!');
+      useToastStore.getState().success('Work marked complete! Awaiting customer confirmation.');
       return updatedJob;
     } catch (err) {
       useToastStore.getState().error(err.message || 'Failed to complete job');
+      throw err;
+    }
+  },
+
+  // POST /jobs/{id}/confirm
+  confirmJob: async (jobId) => {
+    try {
+      const updatedJob = await api.confirmJob(jobId);
+      set({ currentJob: updatedJob });
+      useToastStore.getState().success('Job confirmed as completed!');
+      return updatedJob;
+    } catch (err) {
+      useToastStore.getState().error(err.message || 'Failed to confirm job');
       throw err;
     }
   },

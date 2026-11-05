@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MobileLayout } from './components/layout/MobileLayout';
 import { CustomerHome } from './pages/customer/CustomerHome';
 import { CreateJobPage } from './pages/customer/CreateJobPage';
@@ -14,6 +14,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/admin/AdminPage';
 import { useAuthStore } from './store/authStore';
 import { ROLES } from './types';
+import { ProtectedRoute } from './components/layout/ProtectedRoute';
 
 // ─── Redirect already-logged-in users away from /login ───────────────────────
 function LoginRoute() {
@@ -27,32 +28,19 @@ function LoginRoute() {
 
 // ─── Protect any route by required role ──────────────────────────────────────
 function RequireRole({ role: requiredRole, children }) {
-  const { user, role } = useAuthStore();
-  const location = useLocation();
-
-  if (!user) {
-    // Not logged in → send to /login, save where they were
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  if (requiredRole && role !== requiredRole) {
-    // Wrong role → send to their home
-    if (role === ROLES.ADMIN) return <Navigate to="/admin" replace />;
-    return <Navigate to={role === ROLES.WORKER ? '/worker' : '/'} replace />;
-  }
-
-  return children;
+  return <ProtectedRoute allowedRole={requiredRole}>{children}</ProtectedRoute>;
 }
 
 export default function App() {
-  const initAuthListener = useAuthStore((s) => s.initAuthListener);
+  const initAuth = useAuthStore((state) => state.initAuth);
 
   React.useEffect(() => {
-    const unsub = initAuthListener();
+    const unsubscribe = initAuth();
     return () => {
-      if (typeof unsub === 'function') unsub();
+      if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [initAuthListener]);
+  }, [initAuth]);
+
   return (
     <BrowserRouter>
       <Routes>

@@ -27,16 +27,15 @@ export function WorkerDashboard() {
     () => user?.location || { lat: 19.2812, lng: 72.8697 },
     [user?.location]
   );
-  const trust = user ? computeTrust(user) : { score: null, tier: null };
+  const trust = user ? computeTrust(user) : { score: 85, tier: 'Silver' };
 
-  // TODO: re-enable lat/lng/radiusKm when backend supports them
   useEffect(() => {
-    fetchNearbyJobs();
+    fetchNearbyJobs(workerCoords);
     const interval = setInterval(() => {
-      fetchNearbyJobs();
+      fetchNearbyJobs(workerCoords);
     }, 5000);
     return () => clearInterval(interval);
-  }, [fetchNearbyJobs]);
+  }, [fetchNearbyJobs, workerCoords]);
 
   return (
     <div className="space-y-4 pt-1">
@@ -118,7 +117,7 @@ export function WorkerDashboard() {
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-center gap-2.5 text-xs text-amber-900">
           <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
           <p className="text-[11px]">
-            You are currently <span className="font-bold">Offline</span>. Switch on &quot;Available for Jobs&quot; to receive nearby requests in Mira Road.
+            You are currently <span className="font-bold">Offline</span>. Switch on &quot;Available for Jobs&quot; to receive requests within your 8 km radius in Mira Road.
           </p>
         </div>
       )}
@@ -134,9 +133,7 @@ export function WorkerDashboard() {
               <Zap className="w-4 h-4 text-brand-600 fill-brand-600" />
               <span>Nearby Open Requests</span>
             </h2>
-            <p className="text-[11px] text-slate-500">
-              Matched to your saved profile location • <span className="text-slate-400 italic">Radius filter: Coming soon</span>
-            </p>
+            <p className="text-[11px] text-slate-500">Sorted by distance from your current location</p>
           </div>
           <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-brand-100 text-brand-800">
             {nearbyJobs.length} Live Leads

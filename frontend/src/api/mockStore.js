@@ -1,7 +1,7 @@
-import { SEED_WORKERS } from './mockData';
-import { JOB_STATUS, OFFER_STATUS } from '../types';
-import { calcDistanceKm, calcEtaMinutes, computeTrust } from '../lib/utils';
-import { storage } from '../lib/storage';
+import { SEED_WORKERS } from './mockData.js';
+import { JOB_STATUS, OFFER_STATUS } from '../types/index.js';
+import { calcDistanceKm, calcEtaMinutes, computeTrust } from '../lib/utils.js';
+import { storage } from '../lib/storage.js';
 
 const WORKERS_KEY = 'rb_mock_workers_v1';
 const JOBS_KEY = 'rb_mock_jobs_v1';
@@ -358,12 +358,36 @@ export const mockStore = {
       throw new Error(`Cannot complete job from current status: ${job.status}`);
     }
 
+    job.status = JOB_STATUS.AWAITING_CONFIRMATION;
+    job.completedByWorkerAt = new Date().toISOString();
+    job.updatedAt = new Date().toISOString();
+    saveJobs(jobs);
+
+    // jobsDone is not incremented until customer confirms
+    return job;
+  },
+
+  // POST /jobs/{id}/confirm
+  async confirmJob(jobId) {
+    await delay();
+    const jobs = getJobs();
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job) throw new Error('Job not found');
+
+    if (job.status === JOB_STATUS.COMPLETED) {
+      throw new Error('Job is already completed');
+    }
+
+    if (job.status !== JOB_STATUS.AWAITING_CONFIRMATION) {
+      throw new Error(`Cannot confirm job from current status: ${job.status}`);
+    }
+
     job.status = JOB_STATUS.COMPLETED;
     job.completedAt = new Date().toISOString();
     job.updatedAt = new Date().toISOString();
     saveJobs(jobs);
 
-    // Update worker jobsDone
+    // Increment worker jobsDone exactly once
     if (job.acceptedWorkerId) {
       const workers = getWorkers();
       const worker = workers.find((w) => w.uid === job.acceptedWorkerId);
@@ -406,17 +430,63 @@ export const mockStore = {
 
   // POST /sos
   async triggerSos({ jobId, location }) {
-    await delay(150);
+    await delay(200);
+    const sessionUser = storage.get('rb_auth_user_session', null);
+    const userId = sessionUser?.uid || 'cust_priya';
     const alerts = storage.get(SOS_KEY, []);
+    const contact = storage.get('rb_mock_emergency_contact', null);
+
+    const lat = location?.lat || 19.2812;
+    const lng = location?.lng || 72.8697;
+    const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+
+    const recipients = [];
+    if (contact && contact.phone) {
+      recipients.push({
+        target: 'emergency_contact',
+        phone: contact.phone,
+        channel: 'sms',
+        status: 'sent',
+      });
+    }
+    recipients.push({
+      target: 'ops',
+      phone: '+919800000000',
+      channel: 'sms',
+      status: 'sent',
+    });
+
+    const status = contact ? 'notified' : 'partial';
+
     const alert = {
       id: `sos_${Date.now()}`,
       jobId,
-      location: location || { lat: 19.2812, lng: 72.8697 },
-      timestamp: new Date().toISOString(),
+      userId,
+      location: { lat, lng },
+      createdAt: new Date().toISOString(),
+      status,
+      recipients,
+      mapsUrl,
     };
-    alerts.push(alert);
+    alerts.unshift(alert);
     storage.set(SOS_KEY, alerts);
-    return { success: true, alertId: alert.id, timestamp: alert.timestamp };
+    return alert;
+  },
+
+  async setEmergencyContact(contact) {
+    await delay(100);
+    storage.set('rb_mock_emergency_contact', contact);
+    return { status: 'success', emergencyContact: contact };
+  },
+
+  async getEmergencyContact() {
+    await delay(80);
+    return storage.get('rb_mock_emergency_contact', null);
+  },
+
+  async getAdminSosAlerts() {
+    await delay(100);
+    return storage.get(SOS_KEY, []);
   },
 
   // POST /reports
@@ -466,6 +536,87 @@ export const mockStore = {
     };
   },
 
+  // POST /workers/verify/upload
+  async uploadWorkerVerification(formData) {
+    await delay(200);
+    const sessionUser = storage.get('rb_auth_user_session', null);
+    const workerUid = sessionUser?.uid || 'worker_elec_1';
+    const workers = getWorkers();
+    const worker = workers.find((w) => w.uid === workerUid || (workerUid === 'worker_plumber_unverified' && w.uid === 'w_plumb_unverified'));
+
+    const docType = (formData && typeof formData.get === 'function' ? formData.get('documentType') : null) || 'aadhaar';
+    const docNum = (formData && typeof formData.get === 'function' ? formData.get('documentNumber') : null) || '9876';
+    const cleanNum = docNum.replace(/[\s-]/g, '');
+    const last4 = cleanNum.slice(-4);
+
+    if (worker) {
+      worker.verificationStatus = 'pending';
+      worker.documentType = docType;
+      worker.documentNumberMasked = `•••• ${last4}`;
+      worker.last4 = last4;
+      worker.requestedAt = new Date().toISOString();
+      worker.hasIdDocument = true;
+      worker.hasSelfie = true;
+      worker.rejectionReason = null;
+      worker.attemptCount = (worker.attemptCount || 0) + 1;
+      saveWorkers(workers);
+    }
+
+    if (sessionUser && sessionUser.uid === workerUid) {
+      sessionUser.verificationStatus = 'pending';
+      sessionUser.rejectionReason = null;
+      sessionUser.last4 = last4;
+      storage.set('rb_auth_user_session', sessionUser);
+    }
+
+    return {
+      status: 'pending',
+      workerId: workerUid,
+      message: 'Verification documents uploaded and submitted for review successfully.',
+    };
+  },
+
+  // POST /admin/verifications/{uid}/reject
+  async rejectWorkerVerification(workerUid, reason) {
+    await delay(150);
+    const workers = getWorkers();
+    const worker = workers.find((w) => w.uid === workerUid || (workerUid === 'worker_plumber_unverified' && w.uid === 'w_plumb_unverified') || (workerUid === 'w_plumb_unverified' && w.uid === 'worker_plumber_unverified'));
+    if (!worker) {
+      throw new Error(`Worker with UID '${workerUid}' not found`);
+    }
+
+    worker.verified = false;
+    worker.verificationStatus = 'rejected';
+    worker.rejectionReason = reason;
+    worker.rejectionCount = (worker.rejectionCount || 0) + 1;
+    worker.hasIdDocument = false;
+    worker.hasSelfie = false;
+    saveWorkers(workers);
+
+    const sessionUser = storage.get('rb_auth_user_session', null);
+    if (sessionUser && (sessionUser.uid === worker.uid || sessionUser.uid === workerUid)) {
+      sessionUser.verified = false;
+      sessionUser.verificationStatus = 'rejected';
+      sessionUser.rejectionReason = reason;
+      storage.set('rb_auth_user_session', sessionUser);
+    }
+
+    return {
+      status: 'rejected',
+      workerId: workerUid,
+      verified: false,
+      reason,
+    };
+  },
+
+  async getVerificationDocumentBlobUrl(workerUid, docType) {
+    await delay(100);
+    // Return sample image in mock mode
+    return docType === 'selfie'
+      ? 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=400&auto=format&fit=crop&q=80'
+      : 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=400&auto=format&fit=crop&q=80';
+  },
+
   // POST /admin/verifications/{uid}/approve
   async approveWorkerVerification(workerUid) {
     await delay(150);
@@ -477,9 +628,8 @@ export const mockStore = {
 
     worker.verified = true;
     worker.verificationStatus = 'approved';
-    const computed = computeTrust(worker);
-    worker.trustScore = computed.score;
-    worker.trustBadge = computed.tier;
+    worker.trustScore = Math.min(100, (worker.trustScore || 60) + 30);
+    worker.trustBadge = worker.trustScore >= 90 ? 'Gold' : 'Silver';
     saveWorkers(workers);
 
     const sessionUser = storage.get('rb_auth_user_session', null);
@@ -502,7 +652,19 @@ export const mockStore = {
   async getPendingVerifications() {
     await delay(100);
     const workers = getWorkers();
-    return workers.filter((w) => !w.verified || w.verificationStatus === 'pending');
+    return workers
+      .filter((w) => !w.verified || w.verificationStatus === 'pending')
+      .map((w) => ({
+        uid: w.uid,
+        name: w.name,
+        docType: w.documentType || 'aadhaar',
+        last4: w.last4 || (w.documentNumberMasked ? w.documentNumberMasked.replace('••••', '').trim() : '1098'),
+        submittedAt: w.requestedAt || new Date().toISOString(),
+        attemptCount: w.attemptCount || 1,
+        status: w.verificationStatus || 'pending',
+        hasIdDocument: true,
+        hasSelfie: true,
+      }));
   },
 
   // GET /route?jobId=&workerId=

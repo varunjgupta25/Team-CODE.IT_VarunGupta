@@ -3,6 +3,7 @@ export const JOB_STATUS = {
   NEGOTIATING: 'negotiating',
   ACCEPTED: 'accepted',
   IN_PROGRESS: 'in_progress',
+  AWAITING_CONFIRMATION: 'awaiting_confirmation',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
 };
@@ -18,6 +19,8 @@ export const ROLES = {
   WORKER: 'worker',
   ADMIN: 'admin',
 };
+
+export const ADMIN_CLAIM_KEY = 'admin';
 
 export const VERIFICATION_STATUS = {
   UNVERIFIED: 'unverified',

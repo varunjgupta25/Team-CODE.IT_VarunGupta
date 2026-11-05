@@ -20,6 +20,7 @@ export function BottomNav() {
     JOB_STATUS.NEGOTIATING,
     JOB_STATUS.ACCEPTED,
     JOB_STATUS.IN_PROGRESS,
+    JOB_STATUS.AWAITING_CONFIRMATION,
   ].includes(currentJob.status);
 
   return (
