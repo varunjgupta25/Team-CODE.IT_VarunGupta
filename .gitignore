@@ -26,6 +26,10 @@ cache/
 serviceAccountKey.json
 firebase_credentials.json
 firebase*.json
+*-firebase-adminsdk-*.json
+
+# Archives
+*.zip
 
 # OSM graph cache - committed for deployment and offline routing
 !data/mira_bhayandar.graphml

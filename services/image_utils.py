@@ -71,3 +71,4 @@ def validate_and_sanitize_image(raw_bytes: bytes, filename: str = "") -> Tuple[b
         if isinstance(exc, ImageValidationError):
             raise
         raise ImageValidationError(f"Failed to sanitize and re-encode image: {str(exc)}") from exc
+

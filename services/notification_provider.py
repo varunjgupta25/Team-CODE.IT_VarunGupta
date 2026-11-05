@@ -120,3 +120,4 @@ def set_notification_provider(provider: Optional[NotificationProvider]) -> None:
     """Helper for testing to inject mock/console providers."""
     global _default_provider
     _default_provider = provider
+

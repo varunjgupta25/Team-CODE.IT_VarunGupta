@@ -154,3 +154,4 @@ def set_storage_provider(provider: StorageProvider) -> None:
     """Override storage provider (primarily for tests)."""
     global _default_storage
     _default_storage = provider
+

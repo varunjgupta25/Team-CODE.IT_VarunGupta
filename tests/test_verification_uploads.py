@@ -316,3 +316,4 @@ def test_admin_reject_requires_reason_deletes_images_and_sets_status(auth_worker
     assert audit is not None
     assert audit["reason"] == reject_reason
     assert audit["reviewerUid"] == "admin_user"
+

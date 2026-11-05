@@ -213,3 +213,4 @@ def test_admin_list_sos_alerts(auth_admin_headers, auth_customer_headers, client
     assert res.status_code == 200
     alerts = res.json()
     assert isinstance(alerts, list)
+
