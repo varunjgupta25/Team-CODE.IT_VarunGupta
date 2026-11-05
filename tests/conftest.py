@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from main import app
 from core.database import db
 from core.auth import get_current_user
+from core.rate_limit import clear_all_buckets
 
 
 @pytest.fixture(autouse=True)
@@ -174,6 +175,9 @@ def isolated_db():
             "sos_alerts": {},
             "reports": {},
         }
+
+    # Clear rate-limit buckets so each test starts with a full bucket
+    clear_all_buckets()
 
     # Reset any dependency overrides
     app.dependency_overrides.clear()

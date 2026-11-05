@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from core.config import settings
+from core.rate_limit import RateLimitMiddleware
 from routers.jobs import router as jobs_router
 from routers.workers import router as workers_router
 from routers.offers import router as offers_router
@@ -66,6 +67,9 @@ app.add_middleware(
     CORSMiddleware,
     **cors_kwargs,
 )
+
+# Rate limiting: token-bucket per IP, no third-party deps required
+app.add_middleware(RateLimitMiddleware)
 
 # Status code constant to avoid deprecation warnings across Starlette versions
 UNPROCESSABLE_CODE = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)

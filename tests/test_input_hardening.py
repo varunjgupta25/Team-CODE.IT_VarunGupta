@@ -170,3 +170,4 @@ def test_report_reason_max_length_enforced(client, auth_customer_headers):
         "reason": "y" * 2001
     }, headers=auth_customer_headers)
     assert res.status_code == 422
+
