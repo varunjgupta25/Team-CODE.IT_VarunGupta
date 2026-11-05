@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from core.auth import get_current_user, require_role
 from models.job import VALID_CATEGORIES
@@ -119,47 +120,68 @@ class WorkerRegisterRequest(BaseModel):
 
 
 @router.post("/workers/register", status_code=status.HTTP_201_CREATED)
-def api_register_worker(payload: WorkerRegisterRequest):
+def api_register_worker(
+    payload: WorkerRegisterRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Register a real worker dynamically into the database.
-    Immediately verified and marked online so they appear in matching.
+    Candidate UID is strictly derived from the authenticated token context.
+    Any 'uid' present in the request body is explicitly ignored.
+    Duplicate registrations return HTTP 409 Conflict.
     """
-    import uuid
     from core.database import db
 
-    worker_uid = payload.uid or f"worker_{uuid.uuid4().hex[:8]}"
-    default_loc = {"lat": 19.2812, "lng": 72.8697, "address": "Mira Road, Mumbai"}
-    worker_loc = payload.location or default_loc
-    if "lat" not in worker_loc:
-        worker_loc["lat"] = 19.2812
-    if "lng" not in worker_loc:
-        worker_loc["lng"] = 72.8697
+    candidate_uid = current_user.get("uid")
+    if not candidate_uid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authenticated context missing valid worker ID"
+        )
 
-    new_worker = {
-        "uid": worker_uid,
-        "name": payload.name.strip(),
-        "phone": payload.phone.strip(),
-        "skills": [s.lower().strip() for s in payload.skills],
-        "rates": payload.rates,
-        "isAvailableNow": True,
-        "verified": False,
-        "verificationStatus": "unverified",
-        "rating": 5.0,
-        "jobsDone": 0,
-        "location": worker_loc,
-        "serviceRadiusKm": payload.serviceRadiusKm or 10.0,
-        "avatarUrl": payload.avatarUrl or "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80",
-        "about": payload.about or f"Certified {payload.skills[0]} provider in Mira Road.",
-        "trustScore": 60.0,
-        "trustBadge": "Bronze",
-    }
+    with db._lock:
+        if db.get_document("workers", candidate_uid) or db.get_document("users", candidate_uid):
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "error": "conflict",
+                    "message": "User profile already registered.",
+                    "detail": "User profile already registered."
+                }
+            )
 
-    db.set_document("workers", worker_uid, new_worker)
-    db.set_document("users", worker_uid, {
-        "uid": worker_uid,
-        "role": "worker",
-        "name": new_worker["name"],
-        "phone": new_worker["phone"],
-        "location": worker_loc
-    })
-    return new_worker
+        default_loc = {"lat": 19.2812, "lng": 72.8697, "address": "Mira Road, Mumbai"}
+        worker_loc = payload.location or default_loc
+        if "lat" not in worker_loc:
+            worker_loc["lat"] = 19.2812
+        if "lng" not in worker_loc:
+            worker_loc["lng"] = 72.8697
+
+        new_worker = {
+            "uid": candidate_uid,
+            "name": payload.name.strip(),
+            "phone": payload.phone.strip(),
+            "skills": [s.lower().strip() for s in payload.skills],
+            "rates": payload.rates,
+            "isAvailableNow": True,
+            "verified": False,
+            "verificationStatus": "unverified",
+            "rating": 5.0,
+            "jobsDone": 0,
+            "location": worker_loc,
+            "serviceRadiusKm": payload.serviceRadiusKm or 10.0,
+            "avatarUrl": payload.avatarUrl or "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80",
+            "about": payload.about or f"Certified {payload.skills[0]} provider in Mira Road.",
+            "trustScore": 60.0,
+            "trustBadge": "Bronze",
+        }
+
+        db.set_document("workers", candidate_uid, new_worker)
+        db.set_document("users", candidate_uid, {
+            "uid": candidate_uid,
+            "role": "worker",
+            "name": new_worker["name"],
+            "phone": new_worker["phone"],
+            "location": worker_loc
+        })
+        return new_worker

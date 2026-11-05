@@ -15,7 +15,7 @@ def create_job(job_data: JobCreate, customer_id: str, current_user: Optional[Dic
     user_phone = job_data.customerPhone
 
     if not user_name:
-        if current_user and current_user.get("name") and current_user.get("name") != "Priya Sharma":
+        if current_user and current_user.get("name"):
             user_name = current_user.get("name")
         else:
             db_user = db.get_document("users", customer_id)

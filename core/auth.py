@@ -133,23 +133,27 @@ def get_current_user(
                 "is_firebase": False
             }
 
-        # In dev mode: auto-provision new customer if token indicates customer role
-        if "customer" in token or clean_uid.startswith("cust_"):
-            new_customer = {
-                "uid": clean_uid,
-                "role": "customer",
-                "name": f"Customer {clean_uid[-4:]}" if len(clean_uid) >= 4 else "Customer",
-                "phone": "",
-                "language": "en",
-                "location": {"lat": 19.2825, "lng": 72.8570, "address": "Mira Road East, Mumbai"}
-            }
-            db.set_document("users", clean_uid, new_customer)
+        # In dev mode: allow new dev identities with standard prefixes to authenticate
+        # (without writing to database, so registration endpoints can enforce duplicate checks)
+        if (
+            "customer" in token
+            or clean_uid.startswith("cust_")
+            or "worker" in token
+            or clean_uid.startswith("worker_")
+            or clean_uid.startswith("w_")
+            or "admin" in token
+            or clean_uid == "admin_user"
+        ):
+            role = "worker" if ("worker" in token or clean_uid.startswith("worker_") or clean_uid.startswith("w_")) else (
+                "admin" if ("admin" in token or clean_uid == "admin_user") else "customer"
+            )
             return {
                 "uid": clean_uid,
-                "role": "customer",
-                "name": new_customer["name"],
-                "phone": new_customer["phone"],
-                "location": new_customer["location"],
+                "role": role,
+                "name": f"{role.capitalize()} {clean_uid}",
+                "phone": "",
+                "language": "en",
+                "location": {"lat": 19.2825, "lng": 72.8570, "address": "Mira Road East, Mumbai"},
                 "is_firebase": False
             }
 

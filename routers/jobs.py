@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
-from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Query, status, HTTPException
+from fastapi.responses import JSONResponse
 from core.database import db
 from core.auth import get_current_user, require_role
 from models.job import JobCreate, JobResponse, NearbyJobResponse
@@ -17,31 +18,54 @@ router = APIRouter(tags=["Jobs"])
 
 
 class CustomerRegisterRequest(BaseModel):
-    uid: Optional[str] = None
-    name: str
-    phone: str
+    uid: Optional[str] = Field(None, description="Ignored: UID is strictly derived from authenticated token")
+    name: str = Field(..., min_length=1, max_length=128, description="Customer full name")
+    phone: str = Field(..., min_length=4, max_length=32, description="Contact phone number")
     location: Optional[Dict[str, Any]] = None
 
 
 @router.post("/customers/register", status_code=status.HTTP_201_CREATED)
-def api_register_customer(payload: CustomerRegisterRequest):
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+def api_register_customer(
+    payload: CustomerRegisterRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
-    Register or update customer profile dynamically.
+    Register customer profile dynamically.
+    Candidate UID is strictly derived from the authenticated token context.
+    Any 'uid' present in the request body is explicitly ignored.
+    Duplicate registrations return HTTP 409 Conflict.
     """
-    import uuid
-    customer_uid = payload.uid or f"cust_{uuid.uuid4().hex[:8]}"
-    default_loc = {"lat": 19.2812, "lng": 72.8697, "address": "Mira Road, Mumbai"}
-    cust_loc = payload.location or default_loc
+    candidate_uid = current_user.get("uid")
+    if not candidate_uid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authenticated context missing valid user ID"
+        )
 
-    user_data = {
-        "uid": customer_uid,
-        "role": "customer",
-        "name": payload.name.strip(),
-        "phone": payload.phone.strip(),
-        "location": cust_loc,
-    }
-    db.set_document("users", customer_uid, user_data)
-    return user_data
+    with db._lock:
+        if db.get_document("users", candidate_uid):
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "error": "conflict",
+                    "message": "User profile already registered.",
+                    "detail": "User profile already registered."
+                }
+            )
+
+        default_loc = {"lat": 19.2812, "lng": 72.8697, "address": "Mira Road, Mumbai"}
+        cust_loc = payload.location or default_loc
+
+        user_data = {
+            "uid": candidate_uid,
+            "role": "customer",
+            "name": payload.name.strip(),
+            "phone": payload.phone.strip(),
+            "location": cust_loc,
+        }
+        db.set_document("users", candidate_uid, user_data)
+        return user_data
 
 
 @router.post("/jobs", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
