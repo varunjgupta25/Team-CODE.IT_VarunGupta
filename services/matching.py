@@ -96,6 +96,10 @@ def match_workers_for_job(job_id: str, requester: Optional[Dict[str, Any]] = Non
     # ── Standard filter pass ──────────────────────────────────────────────────
     matched_results: List[Dict[str, Any]] = []
 
+    # Optimize N+1 queries: Batch-fetch report counts in a single O(1) bulk aggregation
+    worker_uids = [w.get("uid") for w in all_workers if w.get("uid")]
+    reports_count_map = db.get_reports_count_in_bulk(worker_uids)
+
     for worker in all_workers:
         # Rule 1: Must be verified
         if not worker.get("verified", False):
@@ -167,8 +171,8 @@ def match_workers_for_job(job_id: str, requester: Optional[Dict[str, Any]] = Non
         score_jobs = min(1.0, float(jobs_done) / 50.0) * 10.0
 
         total_score = round(score_dist + score_rating + score_price + score_jobs, 2)
-        worker_reports = db.query_collection("reports", {"workerId": worker.get("uid", "")})
-        trust_score, trust_badge = get_worker_trust_info(worker, len(worker_reports))
+        report_count = reports_count_map.get(worker.get("uid", ""), 0)
+        trust_score, trust_badge = get_worker_trust_info(worker, report_count)
 
         worker_dict = serialize_worker(worker, requester=requester, mask_for_public=True)
         worker_dict["rate"] = worker_rate

@@ -80,6 +80,15 @@ class TransactionContext:
             return True
         return self._db.delete_document(collection, doc_id, soft=False)
 
+    def list_collection(self, collection: str) -> List[Dict[str, Any]]:
+        return self._db.list_collection(collection)
+
+    def query_collection(self, collection: str, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        return self._db.query_collection(collection, filters)
+
+    def get_documents_in_bulk(self, collection: str, doc_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        return self._db.get_documents_in_bulk(collection, doc_ids)
+
 
 class FirestoreDB:
     """
@@ -329,6 +338,56 @@ class FirestoreDB:
             if match:
                 filtered.append(doc)
         return filtered
+
+    def get_documents_in_bulk(self, collection: str, doc_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Batch-fetches multiple documents by their IDs in a single O(1) bulk operation.
+        Eliminates N+1 query patterns.
+        """
+        if not doc_ids:
+            return {}
+
+        unique_ids = list(set(doc_ids))
+
+        if not self._use_mock and self._firestore_client:
+            result = {}
+            for i in range(0, len(unique_ids), 500):
+                chunk = unique_ids[i:i+500]
+                refs = [self._firestore_client.collection(collection).document(did) for did in chunk]
+                snapshots = self._firestore_client.get_all(refs)
+                for s in snapshots:
+                    if s.exists:
+                        d = s.to_dict() or {}
+                        if not d.get("isDeleted", False):
+                            d["id"] = s.id
+                            result[s.id] = d
+            return result
+
+        with self._lock:
+            col = self._mem_store.get(collection, {})
+            result = {}
+            for did in unique_ids:
+                doc = col.get(did)
+                if doc and not doc.get("isDeleted", False):
+                    item = dict(doc)
+                    item["id"] = did
+                    result[did] = item
+            return result
+
+    def get_reports_count_in_bulk(self, worker_ids: Optional[List[str]] = None) -> Dict[str, int]:
+        """
+        Batch aggregates report counts per worker in a single pass.
+        Eliminates individual N queries when matching or listing workers.
+        """
+        all_reports = self.list_collection("reports")
+        counts: Dict[str, int] = {}
+        target_set = set(worker_ids) if worker_ids is not None else None
+        for r in all_reports:
+            wid = r.get("workerId")
+            if wid:
+                if target_set is None or wid in target_set:
+                    counts[wid] = counts.get(wid, 0) + 1
+        return counts
 
     def run_transaction(self, callback: Callable[[TransactionContext], Any]) -> Any:
         """

@@ -219,8 +219,8 @@ def accept_offer(
     caller_uid: str,
     caller_role: str
 ) -> Dict[str, Any]:
-    with db._lock:
-        offer = db.get_document("offers", offer_id)
+    def _accept_tx(tx):
+        offer = tx.get_document("offers", offer_id)
         if not offer:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -234,7 +234,7 @@ def accept_offer(
             )
 
         job_id = offer.get("jobId")
-        job = db.get_document("jobs", job_id)
+        job = tx.get_document("jobs", job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -269,24 +269,26 @@ def accept_offer(
             )
 
         # 1. Update this offer to accepted
-        updated_offer = db.update_document("offers", offer_id, {"status": "accepted"})
+        updated_offer = tx.update_document("offers", offer_id, {"status": "accepted"})
 
         # 2. Update job status to 'accepted', set acceptedWorkerId and finalPrice
         worker_id = offer.get("workerId")
         final_price = float(offer.get("price"))
-        db.update_document("jobs", job_id, {
+        tx.update_document("jobs", job_id, {
             "status": "accepted",
             "acceptedWorkerId": worker_id,
             "finalPrice": final_price
         })
 
         # 3. Auto-reject all other pending offers on this job
-        all_job_offers = db.query_collection("offers", {"jobId": job_id})
+        all_job_offers = tx.query_collection("offers", {"jobId": job_id})
         for other in all_job_offers:
             if other.get("id") != offer_id and other.get("status") == "pending":
-                db.update_document("offers", other.get("id"), {"status": "rejected"})
+                tx.update_document("offers", other.get("id"), {"status": "rejected"})
 
         return updated_offer
+
+    return db.run_transaction(_accept_tx)
 
 
 def reject_offer(

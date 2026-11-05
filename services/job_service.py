@@ -194,8 +194,8 @@ def start_job(job_id: str, worker_id: str, caller_role: str = "worker") -> Dict[
 
 
 def complete_job(job_id: str, worker_id: str, caller_role: str = "worker") -> Dict[str, Any]:
-    with db._lock:
-        job = db.get_document("jobs", job_id)
+    def _complete_tx(tx):
+        job = tx.get_document("jobs", job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -222,26 +222,27 @@ def complete_job(job_id: str, worker_id: str, caller_role: str = "worker") -> Di
                 detail="Only the assigned worker can complete this job"
             )
 
-        updated = db.update_document("jobs", job_id, {
+        updated = tx.update_document("jobs", job_id, {
             "status": "completed",
             "completedAt": datetime.now(timezone.utc).isoformat()
         })
 
         # Increment jobsDone count for the worker
-        worker = db.get_document("workers", accepted_worker)
+        worker = tx.get_document("workers", accepted_worker)
         if worker:
             current_done = int(worker.get("jobsDone", 0))
-            db.update_document("workers", accepted_worker, {
+            tx.update_document("workers", accepted_worker, {
                 "jobsDone": current_done + 1
             })
 
         return updated
 
+    return db.run_transaction(_complete_tx)
 
 
 def cancel_job(job_id: str, caller_uid: str, caller_role: str) -> Dict[str, Any]:
-    with db._lock:
-        job = db.get_document("jobs", job_id)
+    def _cancel_tx(tx):
+        job = tx.get_document("jobs", job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -267,17 +268,19 @@ def cancel_job(job_id: str, caller_uid: str, caller_role: str) -> Dict[str, Any]
                 detail="Only the customer who created this job or an admin can cancel it"
             )
 
-        updated = db.update_document("jobs", job_id, {
+        updated = tx.update_document("jobs", job_id, {
             "status": "cancelled",
             "cancelledAt": datetime.now(timezone.utc).isoformat()
         })
 
         # Auto-reject any pending offers on this job
-        all_job_offers = db.query_collection("offers", {"jobId": job_id})
+        all_job_offers = tx.query_collection("offers", {"jobId": job_id})
         for off in all_job_offers:
             if off.get("status") == "pending":
-                db.update_document("offers", off.get("id"), {"status": "rejected"})
+                tx.update_document("offers", off.get("id"), {"status": "rejected"})
 
         return updated
+
+    return db.run_transaction(_cancel_tx)
 
 
