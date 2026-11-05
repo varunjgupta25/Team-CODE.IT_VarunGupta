@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     )
 
     PROJECT_NAME: str = "RepairBuddy API"
-    ENV: str = "development"
+    ENV: Optional[str] = None
     ENVIRONMENT: Optional[str] = None
     PORT: int = 8000
     HOST: str = "0.0.0.0"
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def assemble_environment_and_cors(self) -> "Settings":
         # 1. Standardize ENV / ENVIRONMENT
-        resolved_env = (self.ENVIRONMENT or self.ENV or "development").strip().lower()
+        resolved_env = (self.ENV or self.ENVIRONMENT or "development").strip().lower()
         self.ENV = resolved_env
         self.ENVIRONMENT = resolved_env
 
