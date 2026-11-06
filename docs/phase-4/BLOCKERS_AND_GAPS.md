@@ -1,38 +1,32 @@
-# Phase 4 — Blockers and Gaps Report
+# Phase 4 — Unified Blockers and Gaps Report
 
 ## 1. Blocker Status
 
-**Zero Critical Backend Blockers** exist for the frontend separation into Customer and Partner applications. The backend is fully tested and ready to serve both frontends from a single service instance.
+- **Backend**: **Zero Critical Backend Blockers**. The FastAPI backend is fully tested (204/205 tests passing, `test_phase4_app_separation.py` 5/5 passing) and configured for dual-origin CORS support (`CUSTOMER_APP_ORIGIN` and `PARTNER_APP_ORIGIN`).
+- **Frontend**: **Zero Critical Frontend Blockers**. Both Customer App and Partner App build independently (`build:customer`, `build:partner`), pass all 59 verification tests, pass `oxlint`, and achieve 100% strict bundle separation.
 
 ---
 
-## 2. Frontend Coordination Requirements
+## 2. Production Coordination & Vercel Setup
 
-To achieve a seamless end-to-end integration across the two Vercel frontends, the frontend development team must ensure the following configurations:
+To deploy both applications successfully on Vercel:
 
-1. **Identical Backend Base URL**:
-   - Both Customer App and Partner App frontends must configure their API clients to target the same backend:
-     `VITE_API_BASE_URL=https://repair-buddy.onrender.com` (or equivalent environment variable).
-2. **Unified Firebase Project Credentials**:
-   - Both frontend deployments must initialize their Firebase client SDKs using the **exact same Firebase project credentials**:
-     - `apiKey`
-     - `authDomain`
-     - `projectId`
-     - `storageBucket`
-     - `messagingSenderId`
-     - `appId`
-   - Initializing against different Firebase projects will cause `firebase_admin.auth.verify_id_token()` to reject tokens due to mismatched project IDs (`aud` / `iss`).
-3. **Production Origin Registration**:
-   - Once production domains or Vercel URLs are assigned to the two frontends, the repository owner should update Render environment variables:
-     - `CUSTOMER_APP_ORIGIN=https://<customer-app-domain>`
-     - `PARTNER_APP_ORIGIN=https://<partner-app-domain>`
-4. **Independent User Authentication**:
-   - Since browsers isolate `localStorage` per origin domain, users must sign in separately on the Customer and Partner applications. Frontends should avoid passing raw auth tokens in cross-app URL query parameters.
+1. **Deploy as Two Vercel Projects**:
+   - Project 1 (Customer): `Root Directory: frontend`, `Build Command: npm run build:customer`, `VITE_APP=customer`.
+   - Project 2 (Partner): `Root Directory: frontend`, `Build Command: npm run build:partner`, `VITE_APP=partner`.
+2. **Common Backend Base URL**:
+   - Both frontends configure `VITE_API_BASE_URL=https://repair-buddy.onrender.com/api`.
+3. **Unified Firebase Project**:
+   - Both frontends point to `repair-buddy-662c6` so phone OTP authentication and Firebase ID tokens are verifiable across the platform.
+4. **Origin Registration on Render**:
+   - Set `CUSTOMER_APP_ORIGIN` and `PARTNER_APP_ORIGIN` on the Render deployment matching the Vercel domains.
+5. **Independent LocalStorage Sessions**:
+   - Because modern browsers sandbox `localStorage` per domain origin, customers and workers will naturally have separated sessions on their respective domains.
 
 ---
 
 ## 3. Future Architectural Considerations (Non-Blocking)
 
-- **Real-Time Push Notifications**: The platform currently uses polling (`GET /jobs/{id}`, `GET /offers?jobId=...`). If instantaneous alerts are required in subsequent phases, Firebase Cloud Messaging (FCM) or WebSockets may be integrated.
-- **Payment Handling**: The platform operates on a direct cash-on-completion / 0% platform commission model by design. No payment gateway integration is required.
-
+- **Push Notifications**: Integrating Web Push or FCM service worker for background offer alerts when tabs are in background.
+- **PWA Manifests**: Add standalone home-screen installation manifests (`manifest.customer.json` and `manifest.partner.json`).
+- **0% Escrow Direct Cash**: The platform intentionally maintains a 0% platform fee direct cash-on-completion settlement model. No payment gateway integration is required.

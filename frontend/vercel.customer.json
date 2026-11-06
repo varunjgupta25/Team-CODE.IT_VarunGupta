@@ -1,0 +1,14 @@
+{
+  "buildCommand": "npm run build:customer",
+  "outputDirectory": "dist",
+  "env": {
+    "VITE_APP": "customer"
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+

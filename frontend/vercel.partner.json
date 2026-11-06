@@ -1,0 +1,14 @@
+{
+  "buildCommand": "npm run build:partner",
+  "outputDirectory": "dist",
+  "env": {
+    "VITE_APP": "partner"
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+

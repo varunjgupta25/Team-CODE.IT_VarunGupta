@@ -6,7 +6,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "dev:customer": "vite --mode customer",
+    "dev:partner": "vite --mode partner",
+    "build": "vite build --mode customer",
+    "build:customer": "vite build --mode customer",
+    "build:partner": "vite build --mode partner",
     "lint": "oxlint",
     "test": "node --test tests/*.test.js",
     "preview": "vite preview"
