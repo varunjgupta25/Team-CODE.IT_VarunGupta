@@ -7,6 +7,8 @@ import {
   ShieldCheck,
   ArrowRight,
   RotateCcw,
+  Zap,
+  CheckCircle2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToastStore } from '../store/toastStore';
@@ -125,16 +127,29 @@ export function AuthPage() {
 
   return (
     <div className="space-y-5 pt-1">
-      {/* Brand Heading */}
-      <div className="text-center space-y-1">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-50 text-brand-700 text-[11px] font-extrabold mb-1">
+      {/* Brand Heading & Value Proposition */}
+      <div className="text-center space-y-2">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-50 text-brand-700 text-[11px] font-extrabold">
           <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Secure Hyperlocal Authentication</span>
+          <span>India's Hyperlocal Blue-Collar Platform</span>
         </div>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Sign In to RepairBuddy</h1>
-        <p className="text-xs text-slate-500">
-          Separate, dedicated login system for Customers and Service Workers
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight">RepairBuddy</h1>
+        <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed">
+          Book verified local plumbers, electricians, maids & technicians in 30 minutes at negotiated rates with zero platform fee.
         </p>
+
+        {/* Value Proposition Badges */}
+        <div className="flex flex-wrap items-center justify-center gap-1.5 pt-0.5">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold">
+            <Zap className="w-2.5 h-2.5" /> 30-Min Arrival
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[10px] font-bold">
+            <ShieldCheck className="w-2.5 h-2.5" /> Verified Trades
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-[10px] font-bold">
+            <CheckCircle2 className="w-2.5 h-2.5" /> Direct Cash Settlement
+          </span>
+        </div>
       </div>
 
       {/* Strict Portal Tabs */}

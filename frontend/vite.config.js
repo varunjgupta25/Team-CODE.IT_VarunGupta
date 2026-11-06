@@ -12,17 +12,13 @@ export default defineConfig(({ command, mode }) => {
 
   // Strict validation for production builds
   if (command === 'build') {
-    if (!targetApp) {
-      throw new Error(
-        `[Vite Build Error] Missing VITE_APP environment variable.\n` +
-        `Expected 'customer' or 'partner'.\n` +
-        `Run: npm run build:customer OR npm run build:partner`
-      );
-    }
-    if (targetApp !== 'customer' && targetApp !== 'partner') {
+    // When building unified app, missing VITE_APP environment variable defaults to unified build (src/App.jsx -> dist)
+    // Note: Missing VITE_APP environment variable is permitted for default unified build;
+    // For isolated app builds (build:customer / build:partner), validate VITE_APP strictly
+    if (targetApp && targetApp !== 'customer' && targetApp !== 'partner') {
       throw new Error(
         `[Vite Build Error] Invalid VITE_APP value '${targetApp}'.\n` +
-        `Allowed values: 'customer' | 'partner'.`
+        `Allowed values: 'customer' | 'partner' (or omit for unified build).`
       );
     }
 
@@ -77,7 +73,10 @@ export default defineConfig(({ command, mode }) => {
     }
   }
 
-  // Map application entry point for strict bundle isolation
+  // Determine build output and entry point
+  // - Unified build (no VITE_APP or default): uses src/App.jsx, outputs to dist/
+  // - Isolated build (VITE_APP=customer): uses CustomerApp.jsx, outputs to dist/customer/
+  // - Isolated build (VITE_APP=partner): uses PartnerApp.jsx, outputs to dist/partner/
   const appEntryMap = {
     customer: path.resolve(__dirname, 'src/apps/customer/CustomerApp.jsx'),
     partner: path.resolve(__dirname, 'src/apps/partner/PartnerApp.jsx'),
@@ -85,10 +84,15 @@ export default defineConfig(({ command, mode }) => {
 
   const appEntry = appEntryMap[targetApp] || path.resolve(__dirname, 'src/App.jsx');
 
+  const outDirMap = {
+    customer: 'dist/customer',
+    partner: 'dist/partner',
+  };
+
   return {
     plugins: [react()],
     define: {
-      __APP_MODE__: JSON.stringify(targetApp || 'customer'),
+      __APP_MODE__: JSON.stringify(targetApp || 'unified'),
     },
     resolve: {
       alias: {
@@ -96,8 +100,8 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     build: {
-      outDir: targetApp === 'partner' ? 'dist/partner' : targetApp === 'customer' ? 'dist/customer' : 'dist',
-      emptyOutDir: true,
+      outDir: outDirMap[targetApp] || 'dist',
+      emptyOutDir: Boolean(targetApp),
     },
     server: {
       host: '0.0.0.0',

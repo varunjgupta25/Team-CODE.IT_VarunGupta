@@ -8,7 +8,7 @@
     "dev": "vite",
     "dev:customer": "vite --mode customer",
     "dev:partner": "vite --mode partner",
-    "build": "vite build --mode customer",
+    "build": "vite build",
     "build:customer": "vite build --mode customer",
     "build:partner": "vite build --mode partner",
     "lint": "oxlint",
