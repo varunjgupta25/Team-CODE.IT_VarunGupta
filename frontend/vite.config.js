@@ -26,8 +26,16 @@ export default defineConfig(({ command, mode }) => {
       );
     }
 
-    // Guard against accidental localhost URL in production builds
+    // Guard against missing API URL in production builds
     const rawApiUrl = (process.env.VITE_API_BASE_URL || env.VITE_API_BASE_URL || '').trim();
+    if (!rawApiUrl) {
+      throw new Error(
+        `[Vite Build Error] Missing VITE_API_BASE_URL in production build.\n` +
+        `Expected a valid production backend URL (e.g., https://repair-buddy.onrender.com/api).`
+      );
+    }
+
+    // Guard against accidental localhost URL in production builds
     if (rawApiUrl.includes('localhost') || rawApiUrl.includes('127.0.0.1')) {
       if (process.env.VITE_ALLOW_LOCALHOST_PRODUCTION !== 'true') {
         throw new Error(
@@ -66,6 +74,10 @@ export default defineConfig(({ command, mode }) => {
       alias: {
         '@app-entry': appEntry,
       },
+    },
+    build: {
+      outDir: targetApp === 'partner' ? 'dist/partner' : targetApp === 'customer' ? 'dist/customer' : 'dist',
+      emptyOutDir: true,
     },
     server: {
       host: '0.0.0.0',

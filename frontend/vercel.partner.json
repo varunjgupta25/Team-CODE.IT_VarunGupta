@@ -1,6 +1,6 @@
 {
   "buildCommand": "npm run build:partner",
-  "outputDirectory": "dist",
+  "outputDirectory": "dist/partner",
   "env": {
     "VITE_APP": "partner",
     "VITE_USE_MOCK": "false",

@@ -12,6 +12,9 @@ const env =
 // 1. In production (PROD === true), ALWAYS connect to live backend unless explicitly overridden for test preview
 // 2. In development or test runner (Node), use mockStore unless VITE_USE_MOCK === 'false'
 const isProd = Boolean(env.PROD);
+if (isProd && env.VITE_USE_MOCK === 'true' && env.VITE_ALLOW_MOCK_PRODUCTION !== 'true') {
+  console.warn('[SECURITY] VITE_USE_MOCK=true is strictly ignored in production. Connecting to live backend.');
+}
 const isMock = isProd
   ? env.VITE_USE_MOCK === 'true' && env.VITE_ALLOW_MOCK_PRODUCTION === 'true'
   : env.VITE_USE_MOCK !== 'false';

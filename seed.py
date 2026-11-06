@@ -13,13 +13,48 @@ from core.database import db
 from services.trust import get_worker_trust_info
 
 
-def seed_database(clear_existing: bool = True):
-    print("[INFO] Starting RepairBuddy Database Seeding...")
+def seed_database(clear_existing: bool = False, confirm: bool = False):
+    from core.config import settings
+    env = (getattr(settings, "ENV", None) or os.getenv("ENV") or "development").strip().lower()
 
-    # Clear existing data for a clean slate if requested
+    is_test_run = bool(os.getenv("PYTEST_CURRENT_TEST"))
+    allow_seeding_env = os.getenv("ALLOW_SEEDING", "").strip().lower() == "true"
+    allow_destructive_env = os.getenv("ALLOW_DESTRUCTIVE_SEED", "").strip().lower() == "true"
+    allow_staging_env = os.getenv("ALLOW_STAGING_SEED", "").strip().lower() == "true"
+
+    # 1. Production execution is permanently prohibited
+    if env == "production":
+        raise RuntimeError(
+            "[SECURITY VIOLATION] Database seeding operations are strictly prohibited in the production environment."
+        )
+
+    # 2. Staging execution requires explicit confirmation
+    if env == "staging" and not allow_staging_env:
+        raise RuntimeError(
+            "[SECURITY VIOLATION] Database seeding in staging requires explicit opt-in via ALLOW_STAGING_SEED=true."
+        )
+
+    # 3. Development seeding requires explicit opt-in
+    if not (confirm or allow_seeding_env or is_test_run):
+        raise RuntimeError(
+            "[SECURITY VIOLATION] Database seeding in development requires explicit opt-in via ALLOW_SEEDING=true "
+            "or CLI flag --confirm-seed."
+        )
+
+    # 4. Destructive clearing requires explicit additional confirmation
+    if clear_existing and not (allow_destructive_env or (is_test_run and env != "production")):
+        raise RuntimeError(
+            "[SECURITY VIOLATION] Destructive database clearing requires explicit confirmation via ALLOW_DESTRUCTIVE_SEED=true "
+            "or CLI flag --force-clear."
+        )
+
+    print(f"[INFO] Starting RepairBuddy Database Seeding (ENV={env}, clear_existing={clear_existing})...")
+
+    # Clear existing data for a clean slate only if explicitly confirmed
     if clear_existing:
         for collection in ["users", "workers", "jobs", "offers", "reviews", "sos_alerts", "reports"]:
             db.clear_collection(collection)
+        print("[WARN] Existing collection records cleared.")
 
     # 1. Seed 5 Customers + 1 Admin
     customers = [
@@ -616,17 +651,59 @@ def auto_seed_if_empty() -> bool:
     Strictly forbidden in production and staging environments.
     """
     from core.config import settings
-    if settings.ENV in ["production", "staging"]:
-        print(f"[SECURITY] Refusing to auto-seed database in {settings.ENV} environment.")
+    env = (getattr(settings, "ENV", None) or os.getenv("ENV") or "development").strip().lower()
+    if env in ["production", "staging"]:
+        print(f"[SECURITY] Refusing to auto-seed database in {env} environment.")
         return False
     if not getattr(settings, "AUTO_SEED", False):
         return False
     existing_workers = db.list_collection("workers")
     if existing_workers:
         return False
-    seed_database(clear_existing=False)
+    seed_database(clear_existing=False, confirm=True)
     return True
 
 
 if __name__ == "__main__":
-    seed_database()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="RepairBuddy Database Seeding Utility")
+    parser.add_argument(
+        "--confirm-seed",
+        action="store_true",
+        help="Explicitly confirm intent to seed the database in development"
+    )
+    parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Request clearing of existing collections before seeding"
+    )
+    parser.add_argument(
+        "--force-clear",
+        action="store_true",
+        help="Explicitly confirm destructive clearing of collections"
+    )
+    parser.add_argument(
+        "--staging-allowed",
+        action="store_true",
+        help="Explicitly allow non-destructive seeding in staging environment"
+    )
+
+    args = parser.parse_args()
+
+    if args.staging_allowed:
+        os.environ["ALLOW_STAGING_SEED"] = "true"
+    if args.force_clear:
+        os.environ["ALLOW_DESTRUCTIVE_SEED"] = "true"
+    if args.confirm_seed:
+        os.environ["ALLOW_SEEDING"] = "true"
+
+    try:
+        seed_database(clear_existing=args.clear, confirm=args.confirm_seed)
+    except RuntimeError as err:
+        print(f"\n[ERROR] Seeding aborted: {err}\n", file=sys.stderr)
+        print("Usage Guidelines:", file=sys.stderr)
+        print("  - To safely seed in development: python seed.py --confirm-seed", file=sys.stderr)
+        print("  - To clear and re-seed in development: python seed.py --confirm-seed --clear --force-clear", file=sys.stderr)
+        print("  - Production seeding is permanently blocked.", file=sys.stderr)
+        sys.exit(1)

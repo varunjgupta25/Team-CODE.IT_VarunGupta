@@ -1,6 +1,6 @@
 {
   "buildCommand": "npm run build:customer",
-  "outputDirectory": "dist",
+  "outputDirectory": "dist/customer",
   "env": {
     "VITE_APP": "customer",
     "VITE_USE_MOCK": "false",

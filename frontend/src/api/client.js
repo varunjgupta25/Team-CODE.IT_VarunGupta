@@ -3,6 +3,16 @@ import { getFreshIdToken, signOutFirebase } from '../lib/firebase.js';
 
 const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {};
 
+const isProd = Boolean(env.PROD);
+if (isProd) {
+  const configuredUrl = (env.VITE_API_BASE_URL || '').trim();
+  if (!configuredUrl) {
+    console.error('[RepairBuddy Config Error] Missing VITE_API_BASE_URL in production environment.');
+  } else if ((configuredUrl.includes('localhost') || configuredUrl.includes('127.0.0.1')) && env.VITE_ALLOW_LOCALHOST_PRODUCTION !== 'true') {
+    throw new Error('[RepairBuddy Config Error] Localhost API URL is forbidden in production environment.');
+  }
+}
+
 // Resolve and sanitize backend API Base URL
 let rawBaseUrl =
   env.VITE_API_BASE_URL ||
