@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from core.auth import require_role
 from models.worker import AdminApproveResponse, AdminRejectResponse, PendingVerificationWorker
 from services.verification_service import approve_worker_verification, reject_worker_verification
