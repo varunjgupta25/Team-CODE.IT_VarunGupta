@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Optional[Union[str, List[str]]] = None
     CUSTOMER_APP_ORIGIN: Optional[Union[str, List[str]]] = None
     PARTNER_APP_ORIGIN: Optional[Union[str, List[str]]] = None
-    CORS_ORIGIN_REGEX: Optional[str] = None
+    CORS_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
 
     # Database / Firebase Admin Configuration
     FIREBASE_CREDENTIALS_PATH: str = ""

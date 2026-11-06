@@ -27,14 +27,16 @@ Backend CORS configuration now isolates the two production frontends:
 - **Customer App Origin**: `https://repair-buddy-customer.vercel.app`
 - **Partner App Origin**: `https://repair-buddy-partner.vercel.app`
 
-### 2.2 Removal of Global Wildcards (`core/config.py`)
+### 2.2 Removal of Global Wildcards in Production (`core/config.py`)
+In development and CI, `CORS_ORIGIN_REGEX` defaults to `r"https://.*\.vercel\.app"` to accommodate dynamic preview branches. However, in production and staging environments (`ENV in ["production", "staging"]`), `core/config.py` enforces:
 ```python
-class Settings(BaseSettings):
-    ...
-    # Default is now None (wildcard Vercel regex completely removed)
-    CORS_ORIGIN_REGEX: str | None = None
-    CUSTOMER_APP_ORIGIN: str = "https://repair-buddy-customer.vercel.app"
-    PARTNER_APP_ORIGIN: str = "https://repair-buddy-partner.vercel.app"
+if self.CORS_ORIGIN_REGEX == r"https://.*\.vercel\.app":
+    self.CORS_ORIGIN_REGEX = None
+```
+Wildcard matching is strictly dismantled in production, requiring requests to originate from explicit entries:
+```python
+CUSTOMER_APP_ORIGIN: str = "https://repair-buddy-customer.vercel.app"
+PARTNER_APP_ORIGIN: str = "https://repair-buddy-partner.vercel.app"
 ```
 
 ### 2.3 Automatic Localhost Stripping in Production
@@ -85,3 +87,4 @@ Automated test cases in `tests/test_phase4_1_stabilization.py`:
 - `test_cors_strips_localhost_in_production`: Instantiates settings with `ENV="production"` and confirms that `localhost` is completely purged from `clean_origins`.
 
 All tests passed.
+
