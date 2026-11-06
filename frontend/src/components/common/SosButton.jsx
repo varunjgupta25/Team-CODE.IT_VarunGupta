@@ -72,7 +72,7 @@ export function SosButton({ jobId, jobLocation }) {
     }
   };
 
-  const isNotified = sentAlert?.status === 'notified';
+  const isNotified = sentAlert?.status === 'notified' || sentAlert?.status === 'recorded';
   const isPartial = sentAlert?.status === 'partial';
   const isFailed = sentAlert?.status === 'failed' || (sentAlert && !isNotified && !isPartial);
 

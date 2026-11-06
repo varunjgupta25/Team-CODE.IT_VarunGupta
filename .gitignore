@@ -26,6 +26,12 @@ cache/
 serviceAccountKey.json
 firebase_credentials.json
 firebase*.json
+repair-buddy-*.json
+
+# Private uploads & archives
+data/private_uploads/
+*.zip
+Untitled*
 
 # OSM graph cache - committed for deployment and offline routing
 !data/mira_bhayandar.graphml

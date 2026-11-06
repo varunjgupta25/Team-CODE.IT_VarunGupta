@@ -19,7 +19,7 @@ export function CreateJobPage() {
   const [description, setDescription] = useState('');
   const [customerName, setCustomerName] = useState(user?.name || '');
   const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
-  const [mode, setMode] = useState('on_demand'); // 'on_demand' or 'scheduled'
+  const [mode, setMode] = useState('on-demand'); // 'on-demand' or 'scheduled'
   const [scheduledDate, setScheduledDate] = useState('');
   const [budget, setBudget] = useState('');
   const [location, setLocation] = useState(DEFAULT_COORDINATES);
@@ -158,9 +158,9 @@ export function CreateJobPage() {
           <div className="grid grid-cols-2 gap-2.5">
             <button
               type="button"
-              onClick={() => setMode('on_demand')}
+              onClick={() => setMode('on-demand')}
               className={`p-3 rounded-2xl border text-left transition-all ${
-                mode === 'on_demand'
+                mode === 'on-demand'
                   ? 'border-brand-600 bg-brand-50/50 shadow-sm'
                   : 'border-slate-200 bg-white hover:bg-slate-50'
               }`}
