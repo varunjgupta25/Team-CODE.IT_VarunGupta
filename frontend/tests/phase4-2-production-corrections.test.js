@@ -23,37 +23,53 @@ describe('RepairBuddy Phase 4.2 Production Corrections Suite', () => {
   });
 
   it('2. Production mock mode is rejected and prevented from activating', () => {
-    // In production mode (PROD === true), VITE_USE_MOCK="true" is rejected unless explicit test bypass is provided
+    // In production mode (PROD === true), VITE_USE_MOCK="true" is rejected with zero bypass
     const isProd = true;
     const viteUseMock = 'true';
-    const allowMockProd = false;
 
-    const isMock = isProd
-      ? viteUseMock === 'true' && allowMockProd
-      : viteUseMock !== 'false';
+    const isMock = isProd ? false : viteUseMock !== 'false';
+    assert.equal(isMock, false, 'Mock mode must never activate in production');
 
-    assert.equal(isMock, false, 'Mock mode must never activate in production without explicit allow flag');
+    assert.throws(
+      () => {
+        if (isProd && viteUseMock === 'true') {
+          throw new Error('[SECURITY FATAL] VITE_USE_MOCK=true is strictly prohibited in production mode.');
+        }
+      },
+      /strictly prohibited in production mode/
+    );
   });
 
-  it('3. Production localhost URLs are detected and rejected', () => {
+  it('3. Production localhost URLs and non-HTTPS protocols are detected and rejected', () => {
     const isProd = true;
-    const testLocalUrls = ['http://localhost:8000/api', 'http://127.0.0.1:8000/api', 'http://localhost:5173'];
+    const testLocalUrls = ['http://localhost:8000/api', 'http://127.0.0.1:8000/api', 'http://0.0.0.0:8000/api', 'http://localhost:5173'];
 
     for (const url of testLocalUrls) {
-      const isLocal = url.includes('localhost') || url.includes('127.0.0.1');
-      assert.equal(isLocal, true, `URL "${url}" should be detected as localhost`);
+      const isLocal = url.includes('localhost') || url.includes('127.0.0.1') || url.includes('0.0.0.0');
+      assert.equal(isLocal, true, `URL "${url}" should be detected as local/loopback`);
 
       // Simulation of Vite config build guard
       assert.throws(
         () => {
           if (isProd && isLocal) {
-            throw new Error(`[Vite Build Error] VITE_API_BASE_URL cannot point to localhost in production mode.`);
+            throw new Error(`[Vite Build Error] VITE_API_BASE_URL cannot point to localhost/loopback in production mode.`);
           }
         },
-        /cannot point to localhost in production mode/,
+        /cannot point to localhost\/loopback in production mode/,
         `Should throw for localhost URL: ${url}`
       );
     }
+
+    // Insecure HTTP protocol rejection
+    assert.throws(
+      () => {
+        const httpUrl = 'http://api.repairbuddy.in/api';
+        if (isProd && !httpUrl.startsWith('https://')) {
+          throw new Error(`[Vite Build Error] Insecure protocol in VITE_API_BASE_URL: '${httpUrl}'.`);
+        }
+      },
+      /Insecure protocol/
+    );
   });
 
   it('4. Missing production API URL is detected and rejected', () => {

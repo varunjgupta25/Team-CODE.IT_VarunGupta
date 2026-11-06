@@ -12,12 +12,10 @@ const env =
 // 1. In production (PROD === true), ALWAYS connect to live backend unless explicitly overridden for test preview
 // 2. In development or test runner (Node), use mockStore unless VITE_USE_MOCK === 'false'
 const isProd = Boolean(env.PROD);
-if (isProd && env.VITE_USE_MOCK === 'true' && env.VITE_ALLOW_MOCK_PRODUCTION !== 'true') {
-  console.warn('[SECURITY] VITE_USE_MOCK=true is strictly ignored in production. Connecting to live backend.');
+if (isProd && (env.VITE_USE_MOCK === 'true' || env.VITE_USE_MOCK === true)) {
+  throw new Error('[SECURITY FATAL] VITE_USE_MOCK=true is strictly prohibited in production mode.');
 }
-const isMock = isProd
-  ? env.VITE_USE_MOCK === 'true' && env.VITE_ALLOW_MOCK_PRODUCTION === 'true'
-  : env.VITE_USE_MOCK !== 'false';
+const isMock = isProd ? false : env.VITE_USE_MOCK !== 'false';
 
 console.info(`[RepairBuddy API] Running in ${isMock ? 'MOCK' : 'LIVE'} mode.`);
 
@@ -93,15 +91,7 @@ export const api = {
 
   async confirmJob(jobId) {
     if (isMock) return mockStore.confirmJob(jobId);
-    try {
-      return await apiClient.post(`/jobs/${jobId}/confirm`);
-    } catch (err) {
-      if (err.status === 404 || err.response?.status === 404) {
-        // If backend operates on single-step completion, fetch latest completed job
-        return await apiClient.get(`/jobs/${jobId}`);
-      }
-      throw err;
-    }
+    return apiClient.post(`/jobs/${jobId}/confirm`);
   },
 
   async cancelJob(jobId) {
@@ -122,42 +112,18 @@ export const api = {
 
   async setEmergencyContact(payload) {
     if (isMock) return mockStore.setEmergencyContact(payload);
-    try {
-      return await apiClient.put('/users/me/emergency-contact', payload);
-    } catch (err) {
-      if (err.status === 404 || err.response?.status === 404) {
-        localStorage.setItem('rb_emergency_contact', JSON.stringify(payload));
-        return { status: 'saved_locally', emergencyContact: payload };
-      }
-      throw err;
-    }
+    return apiClient.put('/users/me/emergency-contact', payload);
   },
 
   async getEmergencyContact() {
     if (isMock) return mockStore.getEmergencyContact();
-    try {
-      return await apiClient.get('/users/me/emergency-contact');
-    } catch {
-      const cached = localStorage.getItem('rb_emergency_contact');
-      if (cached) {
-        try {
-          return JSON.parse(cached);
-        } catch {
-          // ignore
-        }
-      }
-      return null;
-    }
+    return apiClient.get('/users/me/emergency-contact');
   },
 
   async getAdminSosAlerts() {
     if (isMock) return mockStore.getAdminSosAlerts();
-    try {
-      const res = await apiClient.get('/admin/sos');
-      return Array.isArray(res) ? res : (res?.data || []);
-    } catch {
-      return [];
-    }
+    const res = await apiClient.get('/admin/sos');
+    return Array.isArray(res) ? res : (res?.data || []);
   },
 
   async reportUser(payload) {
@@ -242,21 +208,13 @@ export const api = {
 
   async resetVerificationAttempts(workerUid) {
     if (isMock) return mockStore.resetVerificationAttempts(workerUid);
-    try {
-      return await apiClient.post(`/admin/verifications/${workerUid}/reset_attempts`);
-    } catch {
-      return { status: 'success', workerId: workerUid };
-    }
+    return apiClient.post(`/admin/verifications/${workerUid}/reset_attempts`);
   },
 
   async getReports() {
     if (isMock) return mockStore.getReports();
-    try {
-      const res = await apiClient.get('/admin/reports');
-      return Array.isArray(res) ? res : (res?.data || []);
-    } catch {
-      return [];
-    }
+    const res = await apiClient.get('/admin/reports');
+    return Array.isArray(res) ? res : (res?.data || []);
   },
 
   async getVerificationDocumentBlobUrl(workerUid, docType) {

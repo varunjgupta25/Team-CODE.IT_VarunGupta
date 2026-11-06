@@ -201,3 +201,31 @@ def api_admin_reactivate_user(
     Admin reactivates a suspended user or worker account.
     """
     return reactivate_user(uid)
+
+
+@router.get("/admin/sos")
+def api_admin_get_sos_alerts(
+    current_user: Dict[str, Any] = Depends(require_role(["admin"]))
+):
+    """
+    Returns all emergency SOS alerts sorted by newest first for administrative monitoring.
+    """
+    alerts = db.list_collection("sos_alerts")
+    return sorted(alerts, key=lambda a: a.get("createdAt", ""), reverse=True)
+
+
+@router.post("/admin/verifications/{uid}/reset_attempts")
+def api_admin_reset_verification_attempts(
+    uid: str,
+    current_user: Dict[str, Any] = Depends(require_role(["admin"]))
+):
+    """
+    Resets verification attempts for a rejected worker. Admin only.
+    """
+    worker = db.get("workers", uid)
+    if not worker:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Worker '{uid}' not found")
+    worker["verificationAttempts"] = 0
+    worker["rejectedReason"] = None
+    db.set_document("workers", uid, worker)
+    return {"status": "success", "workerId": uid, "verificationAttempts": 0}

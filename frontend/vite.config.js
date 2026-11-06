@@ -35,25 +35,45 @@ export default defineConfig(({ command, mode }) => {
       );
     }
 
-    // Guard against accidental localhost URL in production builds
-    if (rawApiUrl.includes('localhost') || rawApiUrl.includes('127.0.0.1')) {
-      if (process.env.VITE_ALLOW_LOCALHOST_PRODUCTION !== 'true') {
-        throw new Error(
-          `[Vite Build Error] VITE_API_BASE_URL cannot point to localhost in production mode.\n` +
-          `Configured URL: '${rawApiUrl}'. Please provide a valid production backend URL.`
-        );
-      }
+    // Guard against unresolved placeholders
+    if (
+      rawApiUrl.includes('<') ||
+      rawApiUrl.includes('>') ||
+      rawApiUrl.includes('your-render-service')
+    ) {
+      throw new Error(
+        `[Vite Build Error] Unresolved placeholder in VITE_API_BASE_URL: '${rawApiUrl}'.\n` +
+        `Please specify a valid production backend URL.`
+      );
     }
 
-    // Guard against accidental mock mode in production builds
-    const useMockVal = (process.env.VITE_USE_MOCK || env.VITE_USE_MOCK || '').trim();
+    // Guard against localhost / loopback URLs in production builds (strict, zero-bypass)
+    if (
+      rawApiUrl.includes('localhost') ||
+      rawApiUrl.includes('127.0.0.1') ||
+      rawApiUrl.includes('0.0.0.0')
+    ) {
+      throw new Error(
+        `[Vite Build Error] VITE_API_BASE_URL cannot point to localhost/loopback in production mode.\n` +
+        `Configured URL: '${rawApiUrl}'. Production builds must point to a live HTTPS backend.`
+      );
+    }
+
+    // Require secure HTTPS in production
+    if (!rawApiUrl.startsWith('https://')) {
+      throw new Error(
+        `[Vite Build Error] Insecure protocol in VITE_API_BASE_URL: '${rawApiUrl}'.\n` +
+        `Production API base URL must use HTTPS.`
+      );
+    }
+
+    // Guard against mock mode in production builds (strict, zero-bypass)
+    const useMockVal = (process.env.VITE_USE_MOCK || env.VITE_USE_MOCK || '').trim().toLowerCase();
     if (useMockVal === 'true') {
-      if (process.env.VITE_ALLOW_MOCK_PRODUCTION !== 'true') {
-        throw new Error(
-          `[Vite Build Error] VITE_USE_MOCK cannot be 'true' in production mode.\n` +
-          `Production builds must connect to the live backend.`
-        );
-      }
+      throw new Error(
+        `[Vite Build Error] VITE_USE_MOCK cannot be 'true' in production mode.\n` +
+        `Production builds must connect to the live backend. Mock mode is strictly prohibited.`
+      );
     }
   }
 

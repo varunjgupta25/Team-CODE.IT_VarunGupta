@@ -7,9 +7,24 @@ const isProd = Boolean(env.PROD);
 if (isProd) {
   const configuredUrl = (env.VITE_API_BASE_URL || '').trim();
   if (!configuredUrl) {
-    console.error('[RepairBuddy Config Error] Missing VITE_API_BASE_URL in production environment.');
-  } else if ((configuredUrl.includes('localhost') || configuredUrl.includes('127.0.0.1')) && env.VITE_ALLOW_LOCALHOST_PRODUCTION !== 'true') {
-    throw new Error('[RepairBuddy Config Error] Localhost API URL is forbidden in production environment.');
+    throw new Error('[RepairBuddy Config Error] Missing VITE_API_BASE_URL in production environment.');
+  }
+  if (
+    configuredUrl.includes('localhost') ||
+    configuredUrl.includes('127.0.0.1') ||
+    configuredUrl.includes('0.0.0.0')
+  ) {
+    throw new Error('[RepairBuddy Config Error] Localhost/loopback API URLs are strictly forbidden in production.');
+  }
+  if (!configuredUrl.startsWith('https://')) {
+    throw new Error('[RepairBuddy Config Error] Production API base URL must use HTTPS.');
+  }
+  if (
+    configuredUrl.includes('<') ||
+    configuredUrl.includes('>') ||
+    configuredUrl.includes('your-render-service')
+  ) {
+    throw new Error('[RepairBuddy Config Error] Unresolved placeholder in VITE_API_BASE_URL.');
   }
 }
 

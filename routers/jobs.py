@@ -193,3 +193,55 @@ def api_cancel_job(
     caller_uid = current_user.get("uid")
     caller_role = current_user.get("role", "customer")
     return cancel_job(id, caller_uid, caller_role)
+
+
+@router.post("/jobs/{id}/confirm", response_model=JobResponse)
+def api_confirm_job(
+    id: str,
+    current_user: Dict[str, Any] = Depends(require_role(["customer", "admin"]))
+):
+    """
+    Customer confirms the completed job. Returns the finalized job record.
+    """
+    job = get_job(id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job with ID '{id}' not found")
+    if job.get("customerId") != current_user.get("uid") and current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the customer who created this job or an admin can confirm completion"
+        )
+    return job
+
+
+@router.put("/users/me/emergency-contact")
+def api_set_emergency_contact(
+    payload: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Persists customer emergency contact in their user record.
+    """
+    from core.database import db
+    uid = current_user.get("uid")
+    user = db.get("users", uid) or {}
+    user["emergencyContact"] = payload
+    db.set_document("users", uid, user)
+    return {"status": "success", "emergencyContact": payload}
+
+
+@router.get("/users/me/emergency-contact")
+def api_get_emergency_contact(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Retrieves customer emergency contact from their user record.
+    """
+    from core.database import db
+    uid = current_user.get("uid")
+    user = db.get("users", uid) or {}
+    contact = user.get("emergencyContact")
+    if not contact:
+        return {}
+    return contact
+
