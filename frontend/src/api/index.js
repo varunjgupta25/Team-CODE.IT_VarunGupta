@@ -1,13 +1,20 @@
 import { apiClient } from './client.js';
 import { mockStore } from './mockStore.js';
 
-const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {};
+const env =
+  typeof import.meta !== 'undefined' && import.meta.env
+    ? import.meta.env
+    : typeof process !== 'undefined' && process.env
+      ? process.env
+      : {};
 
-// Determines whether we run offline with mock store or connect to live FastAPI backend
-// In production builds, default to LIVE unless explicitly forced via VITE_USE_MOCK === 'true'
-const isMock =
-  env.VITE_USE_MOCK === 'true' ||
-  (!env.PROD && env.VITE_USE_MOCK !== 'false');
+// Determines whether we run offline with mock store or connect to live FastAPI backend:
+// 1. In production (PROD === true), ALWAYS connect to live backend unless explicitly overridden for test preview
+// 2. In development or test runner (Node), use mockStore unless VITE_USE_MOCK === 'false'
+const isProd = Boolean(env.PROD);
+const isMock = isProd
+  ? env.VITE_USE_MOCK === 'true' && env.VITE_ALLOW_MOCK_PRODUCTION === 'true'
+  : env.VITE_USE_MOCK !== 'false';
 
 console.info(`[RepairBuddy API] Running in ${isMock ? 'MOCK' : 'LIVE'} mode.`);
 

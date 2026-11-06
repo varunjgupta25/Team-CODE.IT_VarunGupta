@@ -613,9 +613,13 @@ def auto_seed_if_empty() -> bool:
     Idempotent auto-seed check: if workers collection is empty and AUTO_SEED is enabled,
     seeds workers, customers, jobs and admin_user without wiping existing data.
     Controlled by AUTO_SEED env var.
+    Strictly forbidden in production and staging environments.
     """
     from core.config import settings
-    if not getattr(settings, "AUTO_SEED", True):
+    if settings.ENV in ["production", "staging"]:
+        print(f"[SECURITY] Refusing to auto-seed database in {settings.ENV} environment.")
+        return False
+    if not getattr(settings, "AUTO_SEED", False):
         return False
     existing_workers = db.list_collection("workers")
     if existing_workers:

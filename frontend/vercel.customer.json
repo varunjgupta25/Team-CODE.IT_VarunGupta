@@ -2,7 +2,9 @@
   "buildCommand": "npm run build:customer",
   "outputDirectory": "dist",
   "env": {
-    "VITE_APP": "customer"
+    "VITE_APP": "customer",
+    "VITE_USE_MOCK": "false",
+    "VITE_API_BASE_URL": "https://repair-buddy.onrender.com/api"
   },
   "rewrites": [
     {
@@ -11,4 +13,3 @@
     }
   ]
 }
-

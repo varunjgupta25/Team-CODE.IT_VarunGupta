@@ -27,7 +27,8 @@ async def lifespan(app: FastAPI):
     from core.database import db
     db.connect()
 
-    if settings.USE_MOCK_FIREBASE and getattr(settings, "AUTO_SEED", True):
+    # Only auto-seed if strictly in development mode and explicitly configured
+    if settings.ENV == "development" and settings.USE_MOCK_FIREBASE and getattr(settings, "AUTO_SEED", False):
         try:
             from seed import auto_seed_if_empty
             auto_seed_if_empty()

@@ -187,7 +187,24 @@ def get_current_user(
         )
 
     user_doc = db.get_document("users", uid)
-    role = decoded_token.get("role") or (user_doc.get("role") if user_doc else "customer")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Unified Role Resolution:
+    # 1. Firebase Custom Claims: Check 'admin: True' or 'role: "admin"'
+    # 2. Firebase Custom Claims: Check 'role' claim ("worker" / "customer")
+    # 3. User Document in Firestore: Check user_doc["role"]
+    # 4. Workers Collection fallback: If worker record exists, assign 'worker'
+    # 5. Default safe fallback: 'customer'
+    # ──────────────────────────────────────────────────────────────────────────
+    if decoded_token.get("admin") is True or decoded_token.get("role") == "admin":
+        role = "admin"
+    elif decoded_token.get("role") in ["worker", "customer"]:
+        role = decoded_token.get("role")
+    elif user_doc and user_doc.get("role"):
+        role = user_doc.get("role")
+    else:
+        worker_doc = db.get_document("workers", uid)
+        role = "worker" if worker_doc else "customer"
 
     return {
         "uid": uid,

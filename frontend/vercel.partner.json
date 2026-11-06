@@ -2,7 +2,9 @@
   "buildCommand": "npm run build:partner",
   "outputDirectory": "dist",
   "env": {
-    "VITE_APP": "partner"
+    "VITE_APP": "partner",
+    "VITE_USE_MOCK": "false",
+    "VITE_API_BASE_URL": "https://repair-buddy.onrender.com/api"
   },
   "rewrites": [
     {
@@ -11,4 +13,3 @@
     }
   ]
 }
-

@@ -108,9 +108,15 @@ def test_database_transaction_rollback():
 
 def test_production_fail_fast_without_credentials(monkeypatch):
     """Verify database connect fails fast if production environment lacks credentials."""
+    from core.config import settings
     prod_db = FirestoreDB()
     monkeypatch.setattr(prod_db, "_use_mock", False)
     monkeypatch.setattr(prod_db, "_firestore_client", None)
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "FIREBASE_CREDENTIALS_PATH", "")
+    monkeypatch.setattr(settings, "FIREBASE_CREDENTIALS_JSON", None)
+    monkeypatch.setattr(settings, "GOOGLE_APPLICATION_CREDENTIALS_JSON", None)
+    monkeypatch.setattr(settings, "FIRESTORE_PROJECT_ID", None)
 
     with pytest.raises(RuntimeError, match="CRITICAL"):
         prod_db.connect()

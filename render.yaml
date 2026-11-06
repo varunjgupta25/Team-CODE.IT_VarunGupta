@@ -5,17 +5,19 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
-    autoDeploy: true
+    autoDeploy: false
     envVars:
       - key: ENV
         value: production
       - key: USE_MOCK_FIREBASE
-        value: "true"
+        value: "false"
       - key: AUTO_SEED
-        value: "true"
+        value: "false"
+      - key: CUSTOMER_APP_ORIGIN
+        value: https://repair-buddy-customer.vercel.app
+      - key: PARTNER_APP_ORIGIN
+        value: https://repair-buddy-partner.vercel.app
       - key: CORS_ORIGINS
-        value: http://localhost:5173,http://127.0.0.1:5173
-      - key: CORS_ORIGIN_REGEX
-        value: https://.*\.vercel\.app
+        value: https://repair-buddy-customer.vercel.app,https://repair-buddy-partner.vercel.app
       - key: TRANSIT_SPEED_KMH
         value: "25.0"

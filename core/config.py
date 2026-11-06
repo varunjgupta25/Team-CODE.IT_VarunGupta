@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Optional[Union[str, List[str]]] = None
     CUSTOMER_APP_ORIGIN: Optional[Union[str, List[str]]] = None
     PARTNER_APP_ORIGIN: Optional[Union[str, List[str]]] = None
-    CORS_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
+    CORS_ORIGIN_REGEX: Optional[str] = None
 
     # Database / Firebase Admin Configuration
     FIREBASE_CREDENTIALS_PATH: str = ""
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     FIRESTORE_PROJECT_ID: Optional[str] = None
     DATABASE_URL: Optional[str] = None
     USE_MOCK_FIREBASE: bool = True
-    AUTO_SEED: bool = True
+    AUTO_SEED: bool = False
 
     # Transit Speed in km/h for ETA calculation (PRD: 25 km/h)
     TRANSIT_SPEED_KMH: float = 25.0
@@ -72,6 +72,8 @@ class Settings(BaseSettings):
                 clean_origins = []
                 for origin in raw_list:
                     if origin != "*" and origin not in clean_origins:
+                        if resolved_env in ["production", "staging"] and ("localhost" in origin or "127.0.0.1" in origin):
+                            continue
                         clean_origins.append(origin)
                 self.ALLOWED_ORIGINS = clean_origins
                 self.CORS_ORIGINS = list(clean_origins)
@@ -102,6 +104,8 @@ class Settings(BaseSettings):
         clean_origins: List[str] = []
         for origin in raw_origins:
             if origin != "*" and origin not in clean_origins:
+                if self.ENV in ["production", "staging"] and ("localhost" in origin or "127.0.0.1" in origin):
+                    continue
                 clean_origins.append(origin)
 
         # 4. Dynamic CORS resolution based on environment
@@ -122,6 +126,8 @@ class Settings(BaseSettings):
                         clean_origins.append(default_origin)
         elif self.ENV in ["production", "staging"]:
             # Strictly reject requests from non-whitelisted origins in production environments
+            # Disable automatic seeding in production
+            self.AUTO_SEED = False
             # Disable permissive default regex in production unless explicitly configured
             if self.CORS_ORIGIN_REGEX == r"https://.*\.vercel\.app":
                 self.CORS_ORIGIN_REGEX = None
